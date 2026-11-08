@@ -196,6 +196,16 @@ async def start_pairing(req: PairingRequest):
         raise HTTPException(502, f"网关 2 没有响应：{e}")
 
 
+@app.get("/api/gateway/children")
+async def gateway_children():
+    try:
+        return await hub.gateway_children()
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"网关 2 没有响应：{e}")
+
+
 @app.get("/api/events")
 def list_events():
     return list(hub.events)

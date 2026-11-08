@@ -153,13 +153,29 @@ class Hub:
         remaining = max(0, round(self.pairing["until"] - time.time()))
         return {"active": remaining > 0, "remaining": remaining, "found": self.pairing["found"]}
 
-    async def start_pairing(self, seconds: int) -> dict:
+    def _gw_miio(self) -> "miio.Device":
         gw = next((r for r in self.records.values() if r["kind"] == "gateway"), None)
         if not gw or not gw.get("token"):
             raise RuntimeError("还没有网关 2 的密钥，请先在米家同步一次")
         if not self.gateway:
             raise RuntimeError("网关 2 未连接")
-        device = miio.Device(gw["ip"], gw["token"], timeout=3)
+        return miio.Device(gw["ip"], gw["token"], timeout=3)
+
+    async def gateway_children(self) -> list[dict]:
+        table = await self._gw_table(self._gw_miio(), attempts=3)
+        children = []
+        for sid, online in table.items():
+            device_id = f"lumi.{sid}"
+            known = device_id in self.records
+            children.append({
+                "sid": sid,
+                "online": online,
+                "device": self.public_device(device_id) if known else None,
+            })
+        return children
+
+    async def start_pairing(self, seconds: int) -> dict:
+        device = self._gw_miio()
         before = await self._gw_table(device, attempts=3)
         await asyncio.to_thread(device.send, "start_zigbee_join", [seconds])
         self.pairing = {"until": time.time() + seconds, "found": []}

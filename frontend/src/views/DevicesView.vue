@@ -5,6 +5,7 @@ import { api, type Device } from '../api'
 import { EVENT_NAMES, cloud, deviceList, devices, events, loadDevices, loadEvents, rooms } from '../store'
 import CloudCard from '../components/CloudCard.vue'
 import DeviceIcon from '../components/DeviceIcon.vue'
+import GatewayChildren from '../components/GatewayChildren.vue'
 import PairingCard from '../components/PairingCard.vue'
 
 const synced = computed(() => !!cloud.value?.logged_in)
@@ -81,6 +82,9 @@ const timeFmt = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-d
             <template #icon><DeviceIcon :kind="d.kind" :active="!!d.state.online" class="cell-icon" /></template>
           </van-cell>
         </van-cell-group>
+      </van-tab>
+      <van-tab title="网关 2" name="gateway">
+        <GatewayChildren v-if="tab === 'gateway'" @edit="edit" />
       </van-tab>
       <van-tab title="事件日志" name="events">
         <div class="tip">按下任意无线开关，这里会实时显示是哪个开关。</div>

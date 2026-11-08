@@ -76,6 +76,12 @@ export interface CloudStatus {
   login: CloudLogin | null
 }
 
+export interface GatewayChild {
+  sid: string
+  online: boolean
+  device: Device | null
+}
+
 export interface PairingStatus {
   active: boolean
   remaining: number
@@ -115,4 +121,5 @@ export const api = {
   cloudLogout: () => request<unknown>('POST', '/cloud/logout'),
   pairing: () => request<PairingStatus>('GET', '/gateway/pairing'),
   startPairing: (seconds = 120) => request<PairingStatus>('POST', '/gateway/pairing', { seconds }),
+  gatewayChildren: () => request<GatewayChild[]>('GET', '/gateway/children'),
 }
