@@ -86,7 +86,7 @@ class Gateway2:
     def _handle(self, msg: dict, addr) -> None:
         if addr[0] != self.ip:
             return
-        cmd = msg.get("cmd")
+        cmd = msg.get("cmd", "")
         sid = norm_sid(msg.get("sid", ""))
         data = json.loads(msg.get("data") or "{}")
         if cmd.endswith("_ack"):
