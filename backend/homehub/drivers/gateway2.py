@@ -102,7 +102,7 @@ class Gateway2:
         self.models[sid] = model
         if "short_id" in msg:
             self.short_ids[sid] = msg["short_id"]
-        if cmd in ("heartbeat", "report", "read_ack", "write_ack"):
+        if cmd in ("heartbeat", "report", "read_ack", "write_ack") and "error" not in data:
             self.on_state(sid, model, {"online": True, **parse_state(model, data)})
         if cmd == "report" and model == "switch" and data.get("status") in SWITCH_EVENTS:
             self.on_event(sid, model, data["status"])

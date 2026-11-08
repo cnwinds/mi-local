@@ -1,4 +1,4 @@
-from homehub.drivers.gateway2 import norm_sid, parse_state
+from homehub.drivers.gateway2 import Gateway2, norm_sid, parse_state
 from homehub.rules import matches, resolve_toggles
 
 RULE = {"enabled": True, "trigger": {"type": "device_event", "device": "lumi.a", "event": "click"}, "actions": []}
@@ -29,3 +29,12 @@ def test_parse_gateway_states():
 
 def test_norm_sid():
     assert norm_sid("04cf8c000001") == norm_sid("4cf8c000001")
+
+
+def test_gateway_error_reply_does_not_mark_online():
+    seen = []
+    gw = Gateway2("192.168.1.120", "04cf8c000001", "k" * 16, "0.0.0.0", lambda *a: seen.append(a), lambda *a: None)
+    gw._handle({"cmd": "read_ack", "sid": "158d0000000002", "data": '{"error":"No device"}'}, ("192.168.1.120", 9898))
+    assert seen == []
+    gw._handle({"cmd": "read_ack", "model": "switch", "sid": "158d0000000001", "data": '{"voltage":3000}'}, ("192.168.1.120", 9898))
+    assert seen == [("158d0000000001", "switch", {"online": True, "battery": 50})]
