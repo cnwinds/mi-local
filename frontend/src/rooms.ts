@@ -91,7 +91,7 @@ export const BUILTIN_ACTIONS: BuiltinAction[] = [
     // Plugs are left alone: they often feed things like the fish tank that must stay on.
     run: (list) => list.filter(isRunning).forEach((d) => sendCommand(d.id, 'turn_off', undefined, { power: false })),
   },
-  { key: 'bright', name: '明亮', icon: 'sun-o', run: (list) => setLights(list, 100, 60) },
+  { key: 'bright', name: '明亮', icon: 'bulb-o', run: (list) => setLights(list, 100, 60) },
   { key: 'soft', name: '柔和', icon: 'fire-o', run: (list) => setLights(list, 35, 15) },
   { key: 'night', name: '夜灯', icon: 'eye-o', run: (list) => setLights(list, 1, 0) },
 ]
