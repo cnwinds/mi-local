@@ -1,0 +1,88 @@
+import { computed, reactive, ref } from 'vue'
+import { showFailToast } from 'vant'
+import { api, type CloudStatus, type Device, type DeviceState, type HubEvent, type Rule } from './api'
+
+export const devices = reactive<Record<string, Device>>({})
+export const rooms = ref<string[]>([])
+export const rules = ref<Rule[]>([])
+export const events = ref<HubEvent[]>([])
+export const connected = ref(false)
+export const cloud = ref<CloudStatus | null>(null)
+
+type EventListener = (e: HubEvent) => void
+const eventListeners = new Set<EventListener>()
+
+export const CONTROLLABLE = new Set(['light', 'plug', 'curtain', 'other'])
+
+export const deviceList = computed(() => Object.values(devices))
+
+export const EVENT_NAMES: Record<string, string> = {
+  click: '单击',
+  double_click: '双击',
+  long_click_press: '长按',
+  long_click_release: '长按松开',
+}
+
+export async function loadDevices() {
+  const list = await api.devices()
+  for (const id of Object.keys(devices)) delete devices[id]
+  for (const d of list) devices[d.id] = d
+  rooms.value = await api.rooms()
+}
+
+export async function loadRules() {
+  rules.value = await api.rules()
+}
+
+export async function loadCloud() {
+  cloud.value = await api.cloud()
+}
+
+export async function loadEvents() {
+  events.value = (await api.events()).reverse()
+}
+
+export function onHubEvent(listener: EventListener) {
+  eventListeners.add(listener)
+  return () => eventListeners.delete(listener)
+}
+
+export async function sendCommand(id: string, action: string, value?: unknown, optimistic?: DeviceState) {
+  const device = devices[id]
+  const previous = { ...device.state }
+  if (optimistic) device.state = { ...device.state, ...optimistic }
+  try {
+    device.state = { ...device.state, ...(await api.command(id, action, value)) }
+  } catch (e) {
+    device.state = previous
+    showFailToast(`${device.name}：操作失败`)
+  }
+}
+
+export function connect() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws'
+  const ws = new WebSocket(`${proto}://${location.host}/api/ws`)
+  ws.onopen = () => {
+    connected.value = true
+    loadDevices()
+    loadCloud()
+  }
+  ws.onclose = () => {
+    connected.value = false
+    setTimeout(connect, 2000)
+  }
+  ws.onmessage = (msg) => {
+    const data = JSON.parse(msg.data)
+    if (data.type === 'state' && devices[data.id]) {
+      devices[data.id].state = data.state
+    } else if (data.type === 'devices') {
+      loadDevices()
+    } else if (data.type === 'cloud') {
+      loadCloud()
+    } else if (data.type === 'event') {
+      const e: HubEvent = { ts: data.ts, device: data.device, event: data.event }
+      events.value = [e, ...events.value].slice(0, 200)
+      eventListeners.forEach((l) => l(e))
+    }
+  }
+}

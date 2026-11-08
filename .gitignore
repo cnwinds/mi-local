@@ -1,0 +1,8 @@
+.venv/
+data/
+__pycache__/
+.pytest_cache/
+tokens.json
+discovery.json
+tools/token_extractor/
+secrets.json

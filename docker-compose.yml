@@ -1,0 +1,13 @@
+services:
+  mi-local:
+    image: ghcr.io/cnwinds/mi-local:latest
+    container_name: mi-local
+    # host network is required: gateway events arrive as multicast on 224.0.0.50:9898
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      HUB_PORT: "8080"
+      HUB_LAN_IP: "0.0.0.0"
+    volumes:
+      - ./data:/data
+      - /etc/localtime:/etc/localtime:ro

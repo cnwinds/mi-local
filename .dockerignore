@@ -1,0 +1,10 @@
+.venv
+data
+tokens.json
+secrets.json
+discovery.json
+tools
+**/node_modules
+frontend/dist
+**/__pycache__
+**/.pytest_cache

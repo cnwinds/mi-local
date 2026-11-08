@@ -1,0 +1,20 @@
+# python-miio is installed with --no-deps (its netifaces pin fails to build); its runtime deps:
+PyYAML>=5,<7
+android_backup<1
+appdirs>=1,<2
+attrs
+click>=8
+construct>=2.10.56,<3
+croniter>=1
+cryptography>=35
+defusedxml<1
+micloud
+netifaces-plus
+pytz
+tqdm>=4,<5
+zeroconf<1
+
+fastapi
+uvicorn[standard]
+pycryptodome
+requests
