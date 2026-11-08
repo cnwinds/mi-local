@@ -17,6 +17,7 @@ async def _call(cloud: MiCloud, path: str, payload: dict):
 
 class CloudDriver:
     kind = "other"
+    fields: list[dict] = []
     poll_interval = 30.0
     offline_retry = 60.0
 
@@ -174,6 +175,93 @@ class AirerDriver(CloudDriver):
             await self.rpc("set_led", [1 if on else 0])
         else:
             raise ValueError(f"unsupported action {action} for airer")
+
+
+INT_FORMATS = ("int8", "uint8", "int16", "uint16", "int32", "uint32", "int64", "uint64")
+
+# Legacy miIO properties some models report beyond their MIoT spec: (prop, label, format, unit, values).
+LEGACY_EXTRAS: dict[str, list[tuple]] = {
+    "viomi.hood.c1": [
+        ("link_state", "烟灶联动", "bool", None, []),
+        ("poweroff_delaytime", "延时关机", "uint16", "seconds", []),
+    ],
+    "viomi.waterheater.u1": [
+        ("errStatus", "故障", "uint8", None, [{"value": 0, "label": "无故障"}]),
+    ],
+}
+
+
+def legacy_fields(model: str) -> list[dict]:
+    return [{"key": f"x.{prop}", "siid": None, "piid": None, "service": "其他", "name": label, "prop": prop,
+             "format": fmt, "unit": unit, "range": None, "values": values, "writable": False}
+            for prop, label, fmt, unit, values in LEGACY_EXTRAS.get(model, [])]
+
+
+class MiotGenericDriver(CloudDriver):
+    """Any device with a MIoT spec: reads every readable property through the cloud.
+
+    State: {"props": {"siid.piid": value}, "power": main switch if the device has one}.
+    """
+
+    poll_interval = 60.0
+    offline_retry = 120.0
+
+    def __init__(self, record: dict, cloud: MiCloud, fields: list[dict]):
+        super().__init__(record, cloud)
+        self.kind = record.get("kind", "other")
+        self.fields = fields + legacy_fields(record.get("model", ""))
+        self.by_key = {f["key"]: f for f in self.fields}
+        main = min((f["siid"] for f in fields), default=None)
+        self.power_key = next((f["key"] for f in fields if f["siid"] == main and f["prop"] == "on"), None)
+
+    async def poll(self) -> dict:
+        spec = [f for f in self.fields if f["siid"] is not None]
+        result = await _call(self.cloud, "/miotspec/prop/get", {"params": [
+            {"did": self.did, "siid": f["siid"], "piid": f["piid"]} for f in spec]})
+        props = {f"{r['siid']}.{r['piid']}": r.get("value") for r in result if r.get("code") == 0}
+        if not props:
+            raise RuntimeError(f"cloud read failed: {sorted({r.get('code') for r in result})}")
+        legacy = [f["prop"] for f in self.fields if f["siid"] is None]
+        if legacy:
+            try:
+                values = await _call(self.cloud, f"/home/rpc/{self.did}", {"method": "get_prop", "params": legacy})
+                props.update({f"x.{p}": v for p, v in zip(legacy, values) if v not in ("error", None)})
+            except Exception:
+                pass
+        state = {"props": props}
+        if self.power_key and self.power_key in props:
+            state["power"] = bool(props[self.power_key])
+        return state
+
+    async def set_prop(self, key: str, value) -> None:
+        field = self.by_key.get(key)
+        if not field or not field["writable"]:
+            raise ValueError(f"property {key} is not writable")
+        if field["format"] == "bool":
+            value = bool(value)
+        elif field["format"] in INT_FORMATS or field["format"] == "float":
+            value = float(value)
+            if field["range"]:
+                lo, hi, step = field["range"]
+                value = min(hi, max(lo, lo + round((value - lo) / step) * step))
+            if field["format"] in INT_FORMATS:
+                value = int(value)
+        if field["values"] and value not in [v["value"] for v in field["values"]]:
+            raise ValueError(f"invalid value {value!r} for {key}")
+        result = await _call(self.cloud, "/miotspec/prop/set", {"params": [
+            {"did": self.did, "siid": field["siid"], "piid": field["piid"], "value": value}]})
+        if any(r.get("code") not in (0, 1) for r in result):
+            raise RuntimeError(f"cloud write failed: {[r.get('code') for r in result]}")
+
+    async def command(self, action: str, value=None) -> None:
+        if action == "set_prop":
+            await self.set_prop(value["key"], value["value"])
+            return
+        if action in ("turn_on", "turn_off", "toggle") and self.power_key:
+            on = action == "turn_on" if action != "toggle" else not (await self.poll()).get("power")
+            await self.set_prop(self.power_key, on)
+            return
+        raise ValueError(f"unsupported action {action}")
 
 
 CLOUD_DRIVERS = {

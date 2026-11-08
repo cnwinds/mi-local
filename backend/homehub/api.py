@@ -79,6 +79,12 @@ def patch_device(device_id: str, patch: DevicePatch):
     return hub.public_device(device_id)
 
 
+@app.get("/api/devices/{device_id}/fields")
+def device_fields(device_id: str):
+    _device_or_404(device_id)
+    return hub.device_fields(device_id)
+
+
 @app.post("/api/devices/{device_id}/command")
 async def device_command(device_id: str, cmd: Command):
     _device_or_404(device_id)

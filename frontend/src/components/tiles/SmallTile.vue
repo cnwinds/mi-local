@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watchEffect } from 'vue'
 import { showToast } from 'vant'
 import type { Device } from '../../api'
-import { sendCommand } from '../../store'
+import { deviceFields, ensureFields, sendCommand } from '../../store'
+import { summarize } from '../../miot'
 import { AC_MODE_NAMES } from '../../rooms'
 import DeviceIcon from '../DeviceIcon.vue'
 
@@ -28,8 +29,16 @@ const status = computed(() => {
     case 'doorbell':
       return '点按响铃'
     default:
-      return s.value.power === undefined ? '在线' : s.value.power ? '开启' : '关闭'
+      return (
+        summarize(fields.value, s.value.props) ||
+        (s.value.power === undefined ? '在线' : s.value.power ? '开启' : '关闭')
+      )
   }
+})
+
+const fields = computed(() => deviceFields[props.device.id] ?? [])
+watchEffect(() => {
+  if (props.device.kind === 'other' && s.value.props) ensureFields(props.device.id)
 })
 
 function tap() {

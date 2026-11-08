@@ -8,6 +8,7 @@ import AcTile from './tiles/AcTile.vue'
 import CurtainTile from './tiles/CurtainTile.vue'
 import BathHeaterTile from './tiles/BathHeaterTile.vue'
 import AirerTile from './tiles/AirerTile.vue'
+import MiotPanel from './MiotPanel.vue'
 import { miHomeLabel } from '../naming'
 
 const props = defineProps<{ deviceId: string | null }>()
@@ -72,6 +73,7 @@ function cmd(action: string, value?: unknown, optimistic?: Record<string, unknow
 
         <div v-if="s.online && device.kind === 'plug'" class="row-label">当前功率 <span class="num">{{ s.load_power ?? 0 }} W</span></div>
         <div v-if="!s.online" class="tip">设备离线，暂时连不上</div>
+        <MiotPanel v-else-if="s.props" :device="device" />
         <div v-else-if="device.kind === 'other'" class="tip">该设备暂只支持查看在线状态</div>
       </template>
       <div v-if="miHomeLabel(device)" class="mi">{{ miHomeLabel(device) }}</div>
@@ -82,6 +84,8 @@ function cmd(action: string, value?: unknown, optimistic?: Record<string, unknow
 <style scoped>
 .body {
   padding: 24px 20px calc(24px + env(safe-area-inset-bottom));
+  max-height: 86vh;
+  overflow-y: auto;
 }
 .embedded {
   box-shadow: none;

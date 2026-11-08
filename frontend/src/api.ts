@@ -32,6 +32,22 @@ export interface DeviceState {
   blow?: boolean
   ventilation?: boolean
   motor?: 'up' | 'down' | 'stop'
+  // any device with a MIoT spec, keyed by DeviceField.key
+  props?: Record<string, PropValue>
+}
+
+export type PropValue = boolean | number | string
+
+export interface DeviceField {
+  key: string
+  service: string
+  name: string
+  prop: string
+  format: string
+  unit: string | null
+  range: [number, number, number] | null
+  values: { value: PropValue; label: string }[]
+  writable: boolean
 }
 
 export type PanelSize = 'large' | 'small' | 'hidden'
@@ -174,6 +190,7 @@ export const api = {
     request<Device>('PATCH', `/devices/${encodeURIComponent(id)}`, patch),
   command: (id: string, action: string, value?: unknown) =>
     request<DeviceState>('POST', `/devices/${encodeURIComponent(id)}/command`, { action, value }),
+  deviceFields: (id: string) => request<DeviceField[]>('GET', `/devices/${encodeURIComponent(id)}/fields`),
   rooms: () => request<string[]>('GET', '/rooms'),
   setRooms: (rooms: string[]) => request<string[]>('PUT', '/rooms', rooms),
   rules: () => request<Rule[]>('GET', '/rules'),

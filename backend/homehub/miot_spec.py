@@ -1,0 +1,115 @@
+"""MIoT specs from miot-spec.org, cached on disk and turned into display fields with Chinese labels.
+
+A field: {key "siid.piid", siid, piid, service, name, prop, format, unit, range, values, writable}.
+"""
+import json
+import logging
+import time
+
+import requests
+
+from .store import DATA_DIR
+
+log = logging.getLogger(__name__)
+
+HOST = "https://miot-spec.org"
+CACHE_DIR = DATA_DIR / "specs"
+INSTANCES_MAX_AGE = 7 * 86400
+SKIP_SERVICES = {"device-information"}
+
+# Fallbacks for specs that ship without a zh_cn translation, keyed by the urn name.
+SERVICE_ZH = {
+    "water-heater": "热水器", "hood": "油烟机", "fan-control": "风机", "light": "灯", "environment": "环境",
+    "speaker": "扬声器", "microphone": "麦克风", "intelligent-speaker": "智能音箱", "play-control": "播放",
+    "clock": "闹钟", "no-disturb": "免打扰", "filter": "滤芯", "alarm": "提示音", "indicator-light": "指示灯",
+    "physical-controls-locked": "童锁", "air-purifier": "空气净化器", "fan": "风扇", "dehumidifier": "除湿机",
+}
+PROP_ZH = {
+    "on": "开关", "mode": "模式", "fan-level": "风量", "target-temperature": "目标温度", "temperature": "温度",
+    "status": "状态", "fault": "故障", "brightness": "亮度", "color-temperature": "色温", "volume": "音量",
+    "mute": "静音", "pm2.5-density": "PM2.5", "relative-humidity": "湿度", "target-humidity": "目标湿度",
+    "filter-life-level": "滤芯剩余", "filter-left-time": "滤芯剩余时间", "left-time": "剩余时间",
+    "physical-controls-locked": "童锁", "alarm": "提示音", "sleep-mode": "睡眠模式", "no-disturb": "免打扰",
+    "enable-time-period": "生效时段", "playing-state": "播放状态", "play-loop-mode": "循环模式", "ringtone": "铃声",
+}
+VALUE_ZH = {
+    "Off": "关闭", "On": "开启", "Idle": "空闲", "Busy": "工作中", "Low": "低档", "Medium": "中档", "Middle": "中档",
+    "High": "高档", "Stir-fry": "爆炒", "Playing": "播放中", "Paused": "已暂停", "Auto": "自动", "Sleep": "睡眠",
+    "No Faults": "无故障", "Single Cycle": "单曲循环", "Favorite": "喜爱", "Fault": "故障",
+}
+
+
+def _get(path: str, **params) -> dict:
+    resp = requests.get(HOST + path, params=params, timeout=30)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _urn_for(model: str) -> str | None:
+    cache = CACHE_DIR / "_instances.json"
+    urns = None
+    if cache.exists() and time.time() - cache.stat().st_mtime < INSTANCES_MAX_AGE:
+        urns = json.loads(cache.read_text(encoding="utf-8"))
+    if urns is None or model not in urns:
+        latest: dict[str, tuple[str, int]] = {}
+        for i in _get("/miot-spec-v2/instances", status="all")["instances"]:
+            if i["model"] not in latest or i["version"] > latest[i["model"]][1]:
+                latest[i["model"]] = (i["type"], i["version"])
+        urns = {m: t for m, (t, _) in latest.items()}
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        cache.write_text(json.dumps(urns), encoding="utf-8")
+    return urns.get(model)
+
+
+def _name(urn: str) -> str:
+    return urn.split(":")[3]
+
+
+def parse(spec: dict, zh: dict[str, str]) -> list[dict]:
+    fields = []
+    for s in spec.get("services", []):
+        if _name(s["type"]) in SKIP_SERVICES:
+            continue
+        sk = f"service:{s['iid']:03}"
+        service = zh.get(sk) or SERVICE_ZH.get(_name(s["type"])) or s.get("description") or _name(s["type"])
+        for p in s.get("properties", []):
+            if "read" not in p.get("access", []):
+                continue
+            pk = f"{sk}:property:{p['iid']:03}"
+            vendor = p["type"].split(":")[1] != "miot-spec-v2"
+            label = zh.get(pk) or PROP_ZH.get(_name(p["type"]))
+            values = [{"value": v["value"],
+                       "label": zh.get(f"{pk}:valuelist:{i:03}") or VALUE_ZH.get(v["description"]) or v["description"]}
+                      for i, v in enumerate(p.get("value-list", []))]
+            # Vendor extensions are often raw blobs or bitmasks; keep only the ones that read as plain values.
+            if vendor and (not label or p["format"] == "string" or (p["format"] in ("uint32", "int32") and not values)):
+                continue
+            unit = p.get("unit")
+            fields.append({
+                "key": f"{s['iid']}.{p['iid']}", "siid": s["iid"], "piid": p["iid"],
+                "service": service, "name": label or p.get("description") or _name(p["type"]),
+                "prop": _name(p["type"]), "format": p["format"],
+                "unit": None if unit in (None, "none") else unit,
+                "range": p.get("value-range"), "values": values, "writable": "write" in p.get("access", []),
+            })
+    return fields
+
+
+def load_fields(model: str) -> list[dict] | None:
+    """Fields for a model, from the disk cache or miot-spec.org. None if the model has no spec."""
+    cache = CACHE_DIR / f"{model}.json"
+    if cache.exists():
+        return json.loads(cache.read_text(encoding="utf-8"))["fields"]
+    urn = _urn_for(model)
+    if not urn:
+        return None
+    spec = _get("/miot-spec-v2/instance", type=urn)
+    try:
+        zh = _get("/instance/v2/multiLanguage", urn=urn).get("data", {}).get("zh_cn", {})
+    except Exception as e:
+        log.debug("no translation for %s: %s", model, e)
+        zh = {}
+    fields = parse(spec, zh)
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps({"urn": urn, "fields": fields}, ensure_ascii=False), encoding="utf-8")
+    return fields

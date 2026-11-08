@@ -4,6 +4,7 @@ import {
   api,
   type CloudStatus,
   type Device,
+  type DeviceField,
   type DeviceState,
   type GatewayStatus,
   type HubEvent,
@@ -68,6 +69,21 @@ export async function loadScenes() {
   scenes.value = await api.scenes()
 }
 
+export const deviceFields = reactive<Record<string, DeviceField[]>>({})
+const fieldRequests = new Map<string, Promise<void>>()
+
+export function ensureFields(id: string) {
+  if (deviceFields[id]?.length || fieldRequests.has(id)) return
+  const req = api
+    .deviceFields(id)
+    .then((f) => {
+      deviceFields[id] = f
+    })
+    .catch(() => {})
+    .finally(() => fieldRequests.delete(id))
+  fieldRequests.set(id, req)
+}
+
 export async function loadEvents() {
   events.value = (await api.events()).reverse()
 }
@@ -108,6 +124,9 @@ export function connect() {
     const data = JSON.parse(msg.data)
     if (data.type === 'state' && devices[data.id]) {
       devices[data.id].state = data.state
+    } else if (data.type === 'fields') {
+      delete deviceFields[data.id]
+      ensureFields(data.id)
     } else if (data.type === 'devices') {
       loadDevices()
     } else if (data.type === 'cloud') {

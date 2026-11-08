@@ -10,7 +10,8 @@ import miio
 
 from .catalog import LOCAL_FIELDS, UNASSIGNED, gateway_record, merge, rooms_from_homes
 from .drivers.gateway2 import KIND_BY_MODEL, Gateway2, Gw2DeviceDriver, Gw2DoorbellDriver
-from .drivers.cloud import CLOUD_DRIVERS
+from .drivers.cloud import CLOUD_DRIVERS, MiotGenericDriver
+from .miot_spec import load_fields
 from .drivers.miio_wifi import DRIVERS
 from .micloud import MiCloud
 from .rules import RuleEngine
@@ -195,10 +196,35 @@ class Hub:
             driver = CLOUD_DRIVERS[record["model"]](record, self.cloud)
         elif driver_name in DRIVERS:
             driver = DRIVERS[driver_name](record)
+            if driver_name == "miio" and self.cloud.logged_in:
+                self._tasks.append(asyncio.create_task(self._upgrade_to_miot(record)))
         else:
             return
-        self.drivers[record["id"]] = driver
-        self._poll_tasks[record["id"]] = asyncio.create_task(self._poll_loop(record["id"]))
+        self._start_driver(record["id"], driver)
+
+    def _start_driver(self, device_id: str, driver) -> None:
+        self.drivers[device_id] = driver
+        self._poll_tasks[device_id] = asyncio.create_task(self._poll_loop(device_id))
+
+    async def _upgrade_to_miot(self, record: dict) -> None:
+        """Swap the plain online check for a driver that reads every property in the device's MIoT spec."""
+        for attempt in range(5):
+            try:
+                fields = await asyncio.to_thread(load_fields, record["model"])
+                break
+            except Exception as e:
+                log.debug("spec for %s unavailable: %s", record["model"], e)
+                await asyncio.sleep(60 * (attempt + 1))
+        else:
+            return
+        if not fields or self.records.get(record["id"]) is not record:
+            return
+        self._detach(record["id"])
+        self._start_driver(record["id"], MiotGenericDriver(record, self.cloud, fields))
+        self.broadcast({"type": "fields", "id": record["id"]})
+
+    def device_fields(self, device_id: str) -> list[dict]:
+        return getattr(self.drivers.get(device_id), "fields", [])
 
     def _detach(self, device_id: str) -> None:
         task = self._poll_tasks.pop(device_id, None)

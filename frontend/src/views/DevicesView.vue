@@ -2,7 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { showToast } from 'vant'
 import { api, type Device } from '../api'
-import { EVENT_NAMES, cloud, deviceList, devices, events, loadDevices, loadEvents, rooms } from '../store'
+import { EVENT_NAMES, cloud, deviceFields, deviceList, devices, ensureFields, events, loadDevices, loadEvents, rooms } from '../store'
+import { summarize } from '../miot'
 import CloudCard from '../components/CloudCard.vue'
 import DeviceIcon from '../components/DeviceIcon.vue'
 import GatewayCard from '../components/gateway/GatewayCard.vue'
@@ -66,7 +67,9 @@ async function save() {
 function statusText(d: Device) {
   if (!d.state.online) return '离线'
   if (d.kind === 'switch') return d.state.battery !== undefined ? `电量 ${d.state.battery}%` : '在线'
-  return d.hidden ? '在线 · 已在首页隐藏' : '在线'
+  if (d.state.props) ensureFields(d.id)
+  const text = summarize(deviceFields[d.id] ?? [], d.state.props) || '在线'
+  return d.hidden ? `${text} · 已在首页隐藏` : text
 }
 
 const onlineCount = computed(() => deviceList.value.filter((d) => d.state.online).length)
