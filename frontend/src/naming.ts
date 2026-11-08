@@ -5,6 +5,12 @@ export function fullName(d: Device) {
   return d.name.startsWith(d.room) || d.room === '未分配' ? d.name : `${d.room}${d.name}`
 }
 
+/** "米家：窗帘 2（客厅走道）" when the local name or room differs from Mi Home, otherwise "". */
+export function miHomeLabel(d: Device) {
+  if (!d.cloud_name || (d.name === d.cloud_name && d.room === d.cloud_room)) return ''
+  return `米家：${d.cloud_name}${d.room !== d.cloud_room ? `（${d.cloud_room}）` : ''}`
+}
+
 /** Name a wireless switch after what its single click controls, plus the room it belongs in. */
 export function suggestSwitchName(all: Device[]): { name: string; room: string } | null {
   // The doorbell lives wherever the gateway is, so it never decides the switch's room.

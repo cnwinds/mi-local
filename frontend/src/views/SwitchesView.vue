@@ -5,7 +5,7 @@ import { api, type Device } from '../api'
 import { deviceList, devices, loadDevices, loadRules, onHubEvent, rooms, rules } from '../store'
 import BindingEditor from '../components/BindingEditor.vue'
 import DeviceIcon from '../components/DeviceIcon.vue'
-import { fullName } from '../naming'
+import { fullName, miHomeLabel } from '../naming'
 
 const MORE_EVENTS: [string, string][] = [['double_click', '双击'], ['long_click_press', '长按']]
 const ACTION_NAMES: Record<string, string> = { toggle: '切换', turn_on: '打开', turn_off: '关闭', open: '打开', close: '关闭', stop: '暂停', ring: '响' }
@@ -92,6 +92,7 @@ async function saveName() {
       <div class="head" @click="rename(d)">
         <div class="name">{{ d.name }}</div>
         <div class="meta">{{ d.room }}<template v-if="d.state.battery !== undefined"> · 电量 {{ d.state.battery }}%</template></div>
+        <div class="meta" v-if="miHomeLabel(d)">{{ miHomeLabel(d) }}</div>
         <van-icon name="edit" class="edit" />
       </div>
       <div class="control" @click="editBinding(d.id, 'click')">

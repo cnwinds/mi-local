@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import type { Device } from '../api'
 import { devices, sendCommand } from '../store'
 import DeviceIcon from './DeviceIcon.vue'
+import { miHomeLabel } from '../naming'
 
 const props = defineProps<{ deviceId: string | null }>()
 const emit = defineEmits<{ close: [] }>()
@@ -40,6 +41,7 @@ function cmd(action: string, value?: unknown, optimistic?: Record<string, unknow
         <div>
           <div class="title">{{ device.name }}</div>
           <div class="sub">{{ device.room }} · {{ s.online ? '在线' : '离线' }}</div>
+          <div class="sub" v-if="miHomeLabel(device)">{{ miHomeLabel(device) }}</div>
         </div>
       </div>
 

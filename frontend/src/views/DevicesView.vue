@@ -7,6 +7,7 @@ import CloudCard from '../components/CloudCard.vue'
 import DeviceIcon from '../components/DeviceIcon.vue'
 import GatewayChildren from '../components/GatewayChildren.vue'
 import PairingCard from '../components/PairingCard.vue'
+import { miHomeLabel } from '../naming'
 
 const synced = computed(() => !!cloud.value?.logged_in)
 
@@ -67,6 +68,11 @@ function statusText(d: Device) {
   return d.hidden ? '在线 · 已在首页隐藏' : '在线'
 }
 
+function cellLabel(d: Device) {
+  const mi = miHomeLabel(d)
+  return `${d.room} · ${statusText(d)}${mi ? `\n${mi}` : ''}`
+}
+
 const timeFmt = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 </script>
 
@@ -78,7 +84,7 @@ const timeFmt = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-d
     <van-tabs v-model:active="tab" background="#f6f7f9" color="#3e7bfa" line-width="16px">
       <van-tab title="设备管理" name="devices">
         <van-cell-group v-for="g in grouped" :key="g.kind" inset :title="`${g.label}（${g.items.length}）`">
-          <van-cell v-for="d in g.items" :key="d.id" :title="d.name" :label="`${d.room} · ${statusText(d)}`" is-link center @click="edit(d)">
+          <van-cell v-for="d in g.items" :key="d.id" :title="d.name" :label="cellLabel(d)" class="multiline" is-link center @click="edit(d)">
             <template #icon><DeviceIcon :kind="d.kind" :active="!!d.state.online" class="cell-icon" /></template>
           </van-cell>
         </van-cell-group>
@@ -133,6 +139,9 @@ const timeFmt = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-d
 .title {
   font-size: 26px;
   font-weight: 700;
+}
+.multiline :deep(.van-cell__label) {
+  white-space: pre-line;
 }
 .cell-icon {
   margin-right: 12px;

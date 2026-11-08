@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { api, type Device, type GatewayChild } from '../api'
 import { pairing } from '../store'
 import DeviceIcon from './DeviceIcon.vue'
+import { miHomeLabel } from '../naming'
 
 const emit = defineEmits<{ edit: [device: Device] }>()
 
@@ -35,7 +36,8 @@ async function load() {
 
 function label(c: GatewayChild) {
   const where = c.device ? `${c.device.room} · ` : ''
-  return `${where}${c.online ? '在线' : '离线'} · …${c.sid.slice(-6)}`
+  const mi = c.device ? miHomeLabel(c.device) : ''
+  return `${where}${c.online ? '在线' : '离线'} · …${c.sid.slice(-6)}${mi ? `\n${mi}` : ''}`
 }
 
 onMounted(load)
@@ -53,7 +55,7 @@ watch(() => pairing.value?.found.length, load)
     <div v-if="error" class="tip error">{{ error }}</div>
     <van-cell-group inset>
       <template v-for="c in sorted" :key="c.sid">
-        <van-cell v-if="c.device" :title="c.device.name" :label="label(c)" is-link center @click="emit('edit', c.device)">
+        <van-cell v-if="c.device" class="multiline" :title="c.device.name" :label="label(c)" is-link center @click="emit('edit', c.device)">
           <template #icon><DeviceIcon :kind="c.device.kind" :active="c.online" class="cell-icon" /></template>
         </van-cell>
         <van-cell v-else title="未知设备" :label="label(c)" center>
@@ -78,6 +80,9 @@ watch(() => pairing.value?.found.length, load)
 .reload {
   color: #3e7bfa;
   margin-left: 6px;
+}
+.multiline :deep(.van-cell__label) {
+  white-space: pre-line;
 }
 .cell-icon {
   margin-right: 12px;
