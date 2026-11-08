@@ -4,9 +4,10 @@ import { showToast } from 'vant'
 import { api, type Device } from '../api'
 import { deviceList, devices, loadDevices, loadRules, onHubEvent, rooms, rules } from '../store'
 import BindingEditor from '../components/BindingEditor.vue'
+import DeviceIcon from '../components/DeviceIcon.vue'
 import { fullName } from '../naming'
 
-const EVENTS: [string, string][] = [['click', '单击'], ['double_click', '双击'], ['long_click_press', '长按']]
+const MORE_EVENTS: [string, string][] = [['double_click', '双击'], ['long_click_press', '长按']]
 const ACTION_NAMES: Record<string, string> = { toggle: '切换', turn_on: '打开', turn_off: '关闭', open: '打开', close: '关闭', stop: '暂停' }
 
 const switches = computed(() => deviceList.value.filter((d) => d.kind === 'switch'))
@@ -23,6 +24,16 @@ function binding(id: string, event: string) {
   const kinds = new Set(rule.actions.map((a) => a.action))
   const verb = kinds.size === 1 ? ACTION_NAMES[[...kinds][0]] ?? '' : ''
   return { text: names.join('、'), verb }
+}
+
+function targets(id: string) {
+  const rule = rules.value.find((r) => r.trigger.device === id && r.trigger.event === 'click')
+  return (rule?.actions ?? []).map((a) => devices[a.device]).filter(Boolean)
+}
+const expanded = ref<Set<string>>(new Set())
+function toggleMore(id: string) {
+  if (expanded.value.has(id)) expanded.value.delete(id)
+  else expanded.value.add(id)
 }
 
 const editSwitch = ref<string | null>(null)
@@ -83,15 +94,32 @@ async function saveName() {
         <div class="meta">{{ d.room }}<template v-if="d.state.battery !== undefined"> · 电量 {{ d.state.battery }}%</template></div>
         <van-icon name="edit" class="edit" />
       </div>
-      <div v-for="[event, label] in EVENTS" :key="event" class="row" @click="editBinding(d.id, event)">
-        <span class="event">{{ label }}</span>
-        <template v-if="binding(d.id, event)">
-          <span class="target">{{ binding(d.id, event)!.text }}</span>
-          <span class="verb">{{ binding(d.id, event)!.verb }}</span>
+      <div class="control" @click="editBinding(d.id, 'click')">
+        <template v-if="targets(d.id).length">
+          <div class="chips">
+            <span v-for="t in targets(d.id)" :key="t.id" class="chip" :class="{ lit: t.state.power }">
+              <DeviceIcon :kind="t.kind" :active="!!t.state.power" class="chip-icon" />{{ fullName(t) }}
+            </span>
+          </div>
+          <span class="change">更换</span>
         </template>
-        <span v-else class="target empty">未设置</span>
-        <van-icon name="arrow" class="arrow" />
+        <van-button v-else block round type="primary" plain icon="plus" size="small">选择要控制的灯</van-button>
       </div>
+      <div class="more-toggle" @click="toggleMore(d.id)">
+        <span>双击 / 长按{{ MORE_EVENTS.some(([e]) => binding(d.id, e)) ? '（已设置）' : '' }}</span>
+        <van-icon :name="expanded.has(d.id) ? 'arrow-up' : 'arrow-down'" />
+      </div>
+      <template v-if="expanded.has(d.id)">
+        <div v-for="[event, label] in MORE_EVENTS" :key="event" class="row" @click="editBinding(d.id, event)">
+          <span class="event">{{ label }}</span>
+          <template v-if="binding(d.id, event)">
+            <span class="target">{{ binding(d.id, event)!.text }}</span>
+            <span class="verb">{{ binding(d.id, event)!.verb }}</span>
+          </template>
+          <span v-else class="target empty">未设置</span>
+          <van-icon name="arrow" class="arrow" />
+        </div>
+      </template>
     </div>
 
     <van-empty v-if="!active.length" description="还没有接入网关 2 的开关，到「设备」页添加" />
@@ -109,7 +137,7 @@ async function saveName() {
       </template>
     </div>
 
-    <BindingEditor :switch-id="editSwitch" :event="editEvent" @close="editSwitch = null" />
+    <BindingEditor :switch-id="editSwitch" :event="editEvent" :simple="editEvent === 'click'" @close="editSwitch = null" />
 
     <van-popup :show="!!renaming" position="bottom" round @update:show="(v: boolean) => !v && (renaming = null)">
       <div class="rename" v-if="renaming">
@@ -169,6 +197,48 @@ async function saveName() {
 .edit {
   margin-left: auto;
   color: #c4c7cc;
+}
+.control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+}
+.chips {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  background: #f6f7f9;
+  border-radius: 10px;
+  padding: 4px 10px 4px 4px;
+}
+.chip.lit {
+  background: #fff6e5;
+}
+.chip-icon {
+  transform: scale(0.6);
+  margin: -8px -6px;
+}
+.change {
+  font-size: 13px;
+  color: #3e7bfa;
+  flex: none;
+}
+.more-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: #8f959e;
+  padding: 8px 0 10px;
+  border-top: 1px solid #f6f7f9;
 }
 .row {
   display: flex;

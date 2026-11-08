@@ -77,7 +77,7 @@ async function start() {
       </div>
     </van-popup>
 
-    <BindingEditor :switch-id="configure" event="click" @close="configure = null" />
+    <BindingEditor :switch-id="configure" event="click" simple @close="configure = null" />
   </div>
 </template>
 
