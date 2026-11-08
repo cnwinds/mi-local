@@ -68,6 +68,7 @@ class Gateway2:
         self._token_ready = asyncio.Event()
         self._pending: dict[tuple[str, str], asyncio.Future] = {}
         self._transport = None
+        self._request_lock: asyncio.Lock | None = None
 
     async def start(self) -> None:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
@@ -76,6 +77,7 @@ class Gateway2:
         mreq = struct.pack("4s4s", socket.inet_aton(MCAST), socket.inet_aton(self.lan_ip))
         sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
         sock.setblocking(False)
+        self._request_lock = asyncio.Lock()
         loop = asyncio.get_running_loop()
         await loop.create_datagram_endpoint(lambda: _Protocol(self._handle), sock=sock)
         self._transport, _ = await loop.create_datagram_endpoint(
@@ -105,15 +107,22 @@ class Gateway2:
         if cmd == "report" and model == "switch" and data.get("status") in SWITCH_EVENTS:
             self.on_event(sid, model, data["status"])
 
-    async def _request(self, cmd: str, sid: str, payload: dict, timeout=5.0) -> dict:
+    async def _request(self, cmd: str, sid: str, payload: dict, timeout=3.0, attempts=2) -> dict:
+        # The gateway drops requests that arrive in bursts, so send one at a time.
         ack = "read_ack" if cmd == "read" else "write_ack"
-        fut = asyncio.get_running_loop().create_future()
-        self._pending[(ack, norm_sid(sid))] = fut
-        self._transport.sendto(json.dumps(payload).encode(), (self.ip, PORT))
-        try:
-            return await asyncio.wait_for(fut, timeout)
-        finally:
-            self._pending.pop((ack, norm_sid(sid)), None)
+        key = (ack, norm_sid(sid))
+        async with self._request_lock:
+            for attempt in range(attempts):
+                fut = asyncio.get_running_loop().create_future()
+                self._pending[key] = fut
+                self._transport.sendto(json.dumps(payload).encode(), (self.ip, PORT))
+                try:
+                    return await asyncio.wait_for(fut, timeout)
+                except asyncio.TimeoutError:
+                    if attempt == attempts - 1:
+                        raise
+                finally:
+                    self._pending.pop(key, None)
 
     async def read(self, sid: str) -> dict:
         return await self._request("read", sid, {"cmd": "read", "sid": sid})

@@ -74,7 +74,7 @@ class Hub:
         driver = self.drivers[device_id]
         while True:
             state = await self.refresh(device_id)
-            interval = driver.poll_interval if state.get("online") else max(driver.poll_interval, 30)
+            interval = driver.poll_interval if state.get("online") else max(min(driver.poll_interval, 60), 30)
             await asyncio.sleep(interval)
 
     async def refresh(self, device_id: str) -> dict:
