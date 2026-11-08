@@ -4,7 +4,7 @@ services:
     container_name: mi-local
     # host network is required: gateway events arrive as multicast on 224.0.0.50:9898
     network_mode: host
-    restart: unless-stopped
+    restart: always
     environment:
       HUB_PORT: "8080"
       HUB_LAN_IP: "0.0.0.0"
