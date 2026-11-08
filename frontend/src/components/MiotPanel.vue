@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, reactive, watchEffect } from 'vue'
-import { Minus, Plus, Power } from 'lucide-vue-next'
+import { computed, reactive, ref, watchEffect } from 'vue'
+import { ChevronDown, Minus, Plus, Power } from 'lucide-vue-next'
 import type { Device, DeviceField, PropValue } from '../api'
 import { deviceFields, ensureFields, sendCommand } from '../store'
 import { formatValue, isNumeric, mainPowerKey, unitLabel } from '../miot'
@@ -16,15 +16,23 @@ const on = computed(() => (powerKey.value ? values.value[powerKey.value] === tru
 const pending = reactive<Record<string, number>>({})
 const timers: Record<string, ReturnType<typeof setTimeout>> = {}
 
-const groups = computed(() => {
+const showMore = ref(false)
+
+function groupBy(list: DeviceField[]) {
   const out: { service: string; items: DeviceField[] }[] = []
-  for (const f of fields.value) {
+  for (const f of list) {
     if (f.key === powerKey.value || (values.value[f.key] === undefined && control(f) !== 'chips')) continue
     const g = out.find((x) => x.service === f.service) ?? out[out.push({ service: f.service, items: [] }) - 1]
     g.items.push(f)
   }
   return out
-})
+}
+
+// Manufacturer extensions go behind "更多" so the standard properties stay readable.
+const mainGroups = computed(() => groupBy(fields.value.filter((f) => !f.vendor)))
+const moreGroups = computed(() => groupBy(fields.value.filter((f) => f.vendor)))
+const moreCount = computed(() => moreGroups.value.reduce((n, g) => n + g.items.length, 0))
+const groups = computed(() => [...mainGroups.value, ...(showMore.value ? moreGroups.value : [])])
 
 type Control = 'switch' | 'chips' | 'stepper' | 'slider' | 'text'
 function control(f: DeviceField): Control {
@@ -104,6 +112,11 @@ function togglePower() {
         </template>
       </div>
     </section>
+
+    <button v-if="moreCount" class="more pressable" :class="{ open: showMore }" @click="showMore = !showMore">
+      {{ showMore ? '收起' : `更多 ${moreCount} 项` }}
+      <ChevronDown :size="16" />
+    </button>
   </div>
 </template>
 
@@ -216,6 +229,23 @@ function togglePower() {
   margin-top: 12px;
   border-radius: 12px;
   overflow: hidden;
+}
+.more {
+  margin: 16px auto 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 13px;
+}
+.more svg {
+  transition: transform 0.2s;
+}
+.more.open svg {
+  transform: rotate(180deg);
 }
 .tip {
   text-align: center;

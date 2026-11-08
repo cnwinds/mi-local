@@ -4,6 +4,7 @@ A field: {key "siid.piid", siid, piid, service, name, prop, format, unit, range,
 """
 import json
 import logging
+import re
 import time
 
 import requests
@@ -40,8 +41,25 @@ PROP_ZH = {
 VALUE_ZH = {
     "Off": "关闭", "On": "开启", "Idle": "空闲", "Busy": "工作中", "Low": "低档", "Medium": "中档", "Middle": "中档",
     "High": "高档", "Stir-fry": "爆炒", "Playing": "播放中", "Paused": "已暂停", "Auto": "自动", "Sleep": "睡眠",
-    "No Faults": "无故障", "Single Cycle": "单曲循环", "Favorite": "喜爱", "Fault": "故障",
+    "No Faults": "无故障", "Single Cycle": "单曲循环", "Favorite": "喜爱", "Fault": "故障", "None": "无",
+    "Day": "白天", "Night": "夜间", "Wear Immediately": "即穿", "Iron": "可熨烫", "Store": "收纳",
 }
+RENAME = {"物理控制锁": "童锁"}
+CJK = re.compile(r"[\u4e00-\u9fff]")
+
+
+def _clean(text: str | None) -> str:
+    """Translations sometimes carry developer notes: '启用时间段(格式为：...)', '运行时长，累计720小时就重置'."""
+    text = re.split(r"[(（，,]", (text or "").strip())[0].strip()
+    return RENAME.get(text, text)
+
+
+def _zh(translated: str | None, fallbacks: dict[str, str], key: str, default: str | None) -> str | None:
+    """Prefer the official translation unless it is just English again."""
+    t = _clean(translated)
+    if t and CJK.search(t):
+        return t
+    return fallbacks.get(key) or t or default
 
 
 def _get(path: str, **params) -> dict:
@@ -76,16 +94,19 @@ def parse(spec: dict, zh: dict[str, str]) -> list[dict]:
         if _name(s["type"]) in SKIP_SERVICES:
             continue
         sk = f"service:{s['iid']:03}"
-        service = (zh.get(sk) or "").strip() or SERVICE_ZH.get(_name(s["type"])) or s.get("description") or _name(s["type"])
+        service = _zh(zh.get(sk), SERVICE_ZH, _name(s["type"]), s.get("description") or _name(s["type"]))
         for p in s.get("properties", []):
             if "read" not in p.get("access", []) or _name(p["type"]) in SKIP_PROPS:
                 continue
             pk = f"{sk}:property:{p['iid']:03}"
             vendor = p["type"].split(":")[1] != "miot-spec-v2"
-            label = (zh.get(pk) or "").strip() or PROP_ZH.get(_name(p["type"]))
+            raw_label = zh.get(pk) or ""
+            label = _zh(raw_label, PROP_ZH, _name(p["type"]), None)
             values = [{"value": v["value"],
-                       "label": zh.get(f"{pk}:valuelist:{i:03}") or VALUE_ZH.get(v["description"]) or v["description"]}
+                       "label": _zh(zh.get(f"{pk}:valuelist:{i:03}"), VALUE_ZH, v["description"], v["description"])}
                       for i, v in enumerate(p.get("value-list", []))]
+            if "位图" in raw_label:
+                continue
             # Vendor extensions are often raw blobs or bitmasks; keep only the ones that read as plain values.
             if vendor and (not label or p["format"] == "string" or (p["format"] in ("uint32", "int32") and not values)):
                 continue
@@ -98,6 +119,7 @@ def parse(spec: dict, zh: dict[str, str]) -> list[dict]:
                 "prop": _name(p["type"]), "format": p["format"],
                 "unit": None if unit in (None, "none") else unit,
                 "range": p.get("value-range"), "values": values, "writable": "write" in p.get("access", []),
+                "vendor": vendor,
             })
     return fields
 

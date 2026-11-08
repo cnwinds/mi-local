@@ -48,6 +48,7 @@ export interface DeviceField {
   range: [number, number, number] | null
   values: { value: PropValue; label: string }[]
   writable: boolean
+  vendor: boolean
 }
 
 export type PanelSize = 'large' | 'small' | 'hidden'

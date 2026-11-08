@@ -194,7 +194,7 @@ LEGACY_EXTRAS: dict[str, list[tuple]] = {
 
 def legacy_fields(model: str) -> list[dict]:
     return [{"key": f"x.{prop}", "siid": None, "piid": None, "service": "其他", "name": label, "prop": prop,
-             "format": fmt, "unit": unit, "range": None, "values": values, "writable": False}
+             "format": fmt, "unit": unit, "range": None, "values": values, "writable": False, "vendor": False}
             for prop, label, fmt, unit, values in LEGACY_EXTRAS.get(model, [])]
 
 

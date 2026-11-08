@@ -29,7 +29,9 @@ HOOD = {"services": [
 
 
 def test_parse_uses_translation_then_fallbacks_and_drops_noise():
-    fields = parse(HOOD, {"service:003:property:001": "抽风档位", "service:003:property:001:valuelist:001": "爆炒档"})
+    fields = parse(HOOD, {"service:003:property:001": "抽风档位(1低 3爆炒)",
+                          "service:003:property:001:valuelist:000": "Low",
+                          "service:003:property:001:valuelist:001": "爆炒档"})
     by_key = {f["key"]: f for f in fields}
     assert set(by_key) == {"2.1", "3.1", "4.2"}
     assert by_key["2.1"]["service"] == "油烟机" and by_key["2.1"]["name"] == "开关"
