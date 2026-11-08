@@ -4,6 +4,7 @@ import { showToast } from 'vant'
 import { api, type Device } from '../api'
 import { deviceList, devices, loadDevices, loadRules, onHubEvent, rooms, rules } from '../store'
 import BindingEditor from '../components/BindingEditor.vue'
+import { fullName } from '../naming'
 
 const EVENTS: [string, string][] = [['click', '单击'], ['double_click', '双击'], ['long_click_press', '长按']]
 const ACTION_NAMES: Record<string, string> = { toggle: '切换', turn_on: '打开', turn_off: '关闭', open: '打开', close: '关闭', stop: '暂停' }
@@ -18,7 +19,7 @@ const showPending = ref(false)
 function binding(id: string, event: string) {
   const rule = rules.value.find((r) => r.trigger.device === id && r.trigger.event === event)
   if (!rule) return null
-  const names = rule.actions.map((a) => devices[a.device]?.name ?? '?')
+  const names = rule.actions.map((a) => (devices[a.device] ? fullName(devices[a.device]) : '?'))
   const kinds = new Set(rule.actions.map((a) => a.action))
   const verb = kinds.size === 1 ? ACTION_NAMES[[...kinds][0]] ?? '' : ''
   return { text: names.join('、'), verb }
