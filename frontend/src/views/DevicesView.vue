@@ -5,6 +5,7 @@ import { api, type Device } from '../api'
 import { EVENT_NAMES, cloud, deviceList, devices, events, loadDevices, loadEvents, rooms } from '../store'
 import CloudCard from '../components/CloudCard.vue'
 import DeviceIcon from '../components/DeviceIcon.vue'
+import PairingCard from '../components/PairingCard.vue'
 
 const synced = computed(() => !!cloud.value?.logged_in)
 
@@ -60,6 +61,7 @@ const timeFmt = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-d
   <div class="devices">
     <header class="hero"><div class="title">设备</div></header>
     <CloudCard />
+    <PairingCard />
     <van-tabs v-model:active="tab" background="#f6f7f9" color="#3e7bfa" line-width="16px">
       <van-tab title="设备管理" name="devices">
         <van-cell-group v-for="g in grouped" :key="g.kind" inset :title="`${g.label}（${g.items.length}）`">

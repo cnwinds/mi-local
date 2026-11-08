@@ -7,7 +7,7 @@ from typing import Any, Literal
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .hub import Hub
 
@@ -171,6 +171,25 @@ async def cloud_sync():
 def cloud_logout():
     hub.logout_cloud()
     return {"ok": True}
+
+
+class PairingRequest(BaseModel):
+    seconds: int = Field(120, ge=10, le=300)
+
+
+@app.get("/api/gateway/pairing")
+def pairing_status():
+    return hub.pairing_status()
+
+
+@app.post("/api/gateway/pairing")
+async def start_pairing(req: PairingRequest):
+    try:
+        return await hub.start_pairing(req.seconds)
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"网关 2 没有响应：{e}")
 
 
 @app.get("/api/events")

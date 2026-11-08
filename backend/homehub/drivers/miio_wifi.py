@@ -10,6 +10,7 @@ log = logging.getLogger(__name__)
 class MiioDriver:
     kind = "other"
     poll_interval = 60.0
+    offline_retry = 30.0
 
     def __init__(self, record: dict):
         self.record = record

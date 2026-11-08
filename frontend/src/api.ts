@@ -64,6 +64,12 @@ export interface CloudStatus {
   login: CloudLogin | null
 }
 
+export interface PairingStatus {
+  active: boolean
+  remaining: number
+  found: string[]
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method,
@@ -95,4 +101,6 @@ export const api = {
   cloudLogin: () => request<CloudLogin>('POST', '/cloud/login'),
   cloudSync: () => request<SyncSummary>('POST', '/cloud/sync'),
   cloudLogout: () => request<unknown>('POST', '/cloud/logout'),
+  pairing: () => request<PairingStatus>('GET', '/gateway/pairing'),
+  startPairing: (seconds = 120) => request<PairingStatus>('POST', '/gateway/pairing', { seconds }),
 }

@@ -31,6 +31,7 @@ def gateway_record(dev: dict, room: str, lan_key: str, ip: str | None = None) ->
     return {
         "id": str(dev["did"]), "name": dev.get("name", "网关"), "room": room, "kind": "gateway",
         "model": dev["model"], "hidden": True, "ip": ip or dev.get("localip"), "lan_key": lan_key,
+        "token": dev.get("token"),
         "sid": dev["mac"].replace(":", "").lower(),
     }
 

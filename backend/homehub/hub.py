@@ -4,6 +4,8 @@ import os
 import time
 from collections import deque
 
+import miio
+
 from .catalog import merge, rooms_from_homes
 from .drivers.gateway2 import KIND_BY_MODEL, Gateway2, Gw2DeviceDriver
 from .drivers.miio_wifi import DRIVERS
@@ -35,6 +37,8 @@ class Hub:
         self._poll_tasks: dict[str, asyncio.Task] = {}
         self._tasks: list[asyncio.Task] = []
         self._sync_lock = asyncio.Lock()
+        self.pairing: dict = {"until": 0.0, "found": []}
+        self._pairing_task: asyncio.Task | None = None
 
     async def start(self) -> None:
         lan_ip = os.environ.get("HUB_LAN_IP") or self.settings.get("lan_ip", "0.0.0.0")
@@ -74,7 +78,7 @@ class Hub:
         driver = self.drivers[device_id]
         while True:
             state = await self.refresh(device_id)
-            interval = driver.poll_interval if state.get("online") else max(min(driver.poll_interval, 60), 30)
+            interval = driver.poll_interval if state.get("online") else driver.offline_retry
             await asyncio.sleep(interval)
 
     async def refresh(self, device_id: str) -> dict:
@@ -100,6 +104,8 @@ class Hub:
         if new != old:
             self.states[device_id] = new
             self.broadcast({"type": "state", "id": device_id, "state": new})
+            if new.get("online") and not old.get("online"):
+                self._note_paired(device_id)
 
     # --- gateway 2 callbacks ---------------------------------------------
     def _gw_state(self, sid: str, model: str, state: dict) -> None:
@@ -134,6 +140,41 @@ class Hub:
         self._attach(record)
         self.broadcast({"type": "devices"})
         log.info("discovered new gateway device %s (%s)", record["id"], model)
+
+    # --- gateway 2 pairing --------------------------------------------------
+    def pairing_status(self) -> dict:
+        remaining = max(0, round(self.pairing["until"] - time.time()))
+        return {"active": remaining > 0, "remaining": remaining, "found": self.pairing["found"]}
+
+    async def start_pairing(self, seconds: int) -> dict:
+        gw = next((r for r in self.records.values() if r["kind"] == "gateway"), None)
+        if not gw or not gw.get("token"):
+            raise RuntimeError("还没有网关 2 的密钥，请先在米家同步一次")
+        device = miio.Device(gw["ip"], gw["token"], timeout=3)
+        await asyncio.to_thread(device.send, "start_zigbee_join", [seconds])
+        self.pairing = {"until": time.time() + seconds, "found": []}
+        if self._pairing_task:
+            self._pairing_task.cancel()
+        self._pairing_task = asyncio.create_task(self._finish_pairing(seconds))
+        self.broadcast({"type": "pairing"})
+        return self.pairing_status()
+
+    async def _finish_pairing(self, seconds: int) -> None:
+        await asyncio.sleep(seconds)
+        self.broadcast({"type": "pairing"})
+        if self.cloud.logged_in:
+            try:
+                await self.sync_cloud()
+            except Exception as e:
+                log.warning("cloud sync after pairing failed: %s", e)
+
+    def _note_paired(self, device_id: str) -> None:
+        # Joined devices show up once they report; allow a grace period for the first button press.
+        record = self.records.get(device_id)
+        if (record and record.get("driver") == "gw2" and time.time() < self.pairing["until"] + 600
+                and device_id not in self.pairing["found"]):
+            self.pairing["found"].append(device_id)
+            self.broadcast({"type": "pairing"})
 
     # --- Mi Home cloud sync -----------------------------------------------
     async def _cloud_loop(self) -> None:

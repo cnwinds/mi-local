@@ -125,7 +125,8 @@ class Gateway2:
                     self._pending.pop(key, None)
 
     async def read(self, sid: str) -> dict:
-        return await self._request("read", sid, {"cmd": "read", "sid": sid})
+        # Sub-devices that left the gateway never answer; a single short try keeps them from hogging the queue.
+        return await self._request("read", sid, {"cmd": "read", "sid": sid}, timeout=2.0, attempts=1)
 
     async def write(self, sid: str, params: dict) -> dict:
         await asyncio.wait_for(self._token_ready.wait(), 15)
@@ -147,6 +148,7 @@ class Gw2DeviceDriver:
     """Adapter so gateway sub-devices look like other drivers to the hub."""
 
     poll_interval = 300.0
+    offline_retry = 300.0
 
     def __init__(self, record: dict, gateway: Gateway2):
         self.record = record

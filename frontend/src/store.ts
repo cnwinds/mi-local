@@ -1,6 +1,6 @@
 import { computed, reactive, ref } from 'vue'
 import { showFailToast } from 'vant'
-import { api, type CloudStatus, type Device, type DeviceState, type HubEvent, type Rule } from './api'
+import { api, type CloudStatus, type Device, type DeviceState, type HubEvent, type PairingStatus, type Rule } from './api'
 
 export const devices = reactive<Record<string, Device>>({})
 export const rooms = ref<string[]>([])
@@ -8,6 +8,7 @@ export const rules = ref<Rule[]>([])
 export const events = ref<HubEvent[]>([])
 export const connected = ref(false)
 export const cloud = ref<CloudStatus | null>(null)
+export const pairing = ref<PairingStatus | null>(null)
 
 type EventListener = (e: HubEvent) => void
 const eventListeners = new Set<EventListener>()
@@ -36,6 +37,10 @@ export async function loadRules() {
 
 export async function loadCloud() {
   cloud.value = await api.cloud()
+}
+
+export async function loadPairing() {
+  pairing.value = await api.pairing()
 }
 
 export async function loadEvents() {
@@ -79,6 +84,8 @@ export function connect() {
       loadDevices()
     } else if (data.type === 'cloud') {
       loadCloud()
+    } else if (data.type === 'pairing') {
+      loadPairing()
     } else if (data.type === 'event') {
       const e: HubEvent = { ts: data.ts, device: data.device, event: data.event }
       events.value = [e, ...events.value].slice(0, 200)
