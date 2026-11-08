@@ -19,7 +19,7 @@ const timers: Record<string, ReturnType<typeof setTimeout>> = {}
 const groups = computed(() => {
   const out: { service: string; items: DeviceField[] }[] = []
   for (const f of fields.value) {
-    if (f.key === powerKey.value || values.value[f.key] === undefined) continue
+    if (f.key === powerKey.value || (values.value[f.key] === undefined && control(f) !== 'chips')) continue
     const g = out.find((x) => x.service === f.service) ?? out[out.push({ service: f.service, items: [] }) - 1]
     g.items.push(f)
   }
@@ -33,6 +33,10 @@ function control(f: DeviceField): Control {
   if (f.values.length) return 'chips'
   if (f.range && isNumeric(f)) return (f.range[1] - f.range[0]) / f.range[2] <= 60 ? 'stepper' : 'slider'
   return 'text'
+}
+
+function label(f: DeviceField, group: DeviceField[]) {
+  return f.prop === 'on' && group.length === 1 ? f.service : f.name
 }
 
 function set(f: DeviceField, value: PropValue) {
@@ -69,7 +73,7 @@ function togglePower() {
     <div v-if="!fields.length" class="tip">正在读取设备能力…</div>
 
     <section v-for="g in groups" :key="g.service" class="group">
-      <div class="section-label">{{ g.service }}</div>
+      <div v-if="g.items.length > 1 || g.items[0].prop !== 'on'" class="section-label">{{ g.service }}</div>
       <div class="rows">
         <template v-for="f in g.items" :key="f.key">
           <div v-if="control(f) === 'chips'" class="row col">
@@ -87,7 +91,7 @@ function togglePower() {
             </van-slider>
           </div>
           <div v-else class="row">
-            <span class="label">{{ f.name }}</span>
+            <span class="label">{{ label(f, g.items) }}</span>
             <van-switch v-if="control(f) === 'switch'" :model-value="!!values[f.key]" size="22px"
               active-color="var(--accent)" @update:model-value="(v: boolean) => set(f, v)" />
             <div v-else-if="control(f) === 'stepper'" class="stepper">

@@ -50,6 +50,8 @@ def test_generic_driver_reads_props_and_writes_within_spec():
     asyncio.run(driver.command("turn_off"))
     sets = [c[1]["params"][0] for c in cloud.calls if c[0] == "/miotspec/prop/set"]
     assert [(s["siid"], s["piid"], s["value"]) for s in sets] == [(4, 2, 65), (2, 1, False)]
+    state = asyncio.run(driver.poll())
+    assert state["props"]["4.2"] == 65 and state["power"] is False
     with pytest.raises(ValueError):
         asyncio.run(driver.command("set_prop", {"key": "3.1", "value": 2}))
     with pytest.raises(ValueError):

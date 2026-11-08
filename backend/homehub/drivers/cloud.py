@@ -3,6 +3,7 @@
 MIoT devices use /miotspec/prop/get|set; older ones use /home/rpc/<did> with their legacy miIO methods.
 """
 import asyncio
+import time
 
 from ..micloud import MiCloud
 
@@ -205,9 +206,11 @@ class MiotGenericDriver(CloudDriver):
 
     poll_interval = 60.0
     offline_retry = 120.0
+    WRITE_SETTLE = 10.0
 
     def __init__(self, record: dict, cloud: MiCloud, fields: list[dict]):
         super().__init__(record, cloud)
+        self._written: dict[str, tuple] = {}
         self.kind = record.get("kind", "other")
         self.fields = fields + legacy_fields(record.get("model", ""))
         self.by_key = {f["key"]: f for f in self.fields}
@@ -221,6 +224,10 @@ class MiotGenericDriver(CloudDriver):
         props = {f"{r['siid']}.{r['piid']}": r.get("value") for r in result if r.get("code") == 0}
         if not props:
             raise RuntimeError(f"cloud read failed: {sorted({r.get('code') for r in result})}")
+        # The cloud keeps answering with the old value for a few seconds after a write.
+        now = time.monotonic()
+        self._written = {k: (v, t) for k, (v, t) in self._written.items() if now - t < self.WRITE_SETTLE}
+        props.update({k: v for k, (v, _) in self._written.items() if k in props})
         legacy = [f["prop"] for f in self.fields if f["siid"] is None]
         if legacy:
             try:
@@ -252,6 +259,7 @@ class MiotGenericDriver(CloudDriver):
             {"did": self.did, "siid": field["siid"], "piid": field["piid"], "value": value}]})
         if any(r.get("code") not in (0, 1) for r in result):
             raise RuntimeError(f"cloud write failed: {[r.get('code') for r in result]}")
+        self._written[key] = (value, time.monotonic())
 
     async def command(self, action: str, value=None) -> None:
         if action == "set_prop":
