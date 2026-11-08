@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { showConfirmDialog, showFailToast, showSuccessToast } from 'vant'
 import { api, type SyncSummary } from '../api'
 import { cloud, loadCloud } from '../store'
+import { CircleCheck, Cloud as CloudIcon } from 'lucide-vue-next'
 
 const syncing = ref(false)
 const showQr = ref(false)
@@ -55,9 +56,10 @@ async function logout() {
 </script>
 
 <template>
-  <div class="cloud" v-if="cloud">
+  <div class="cloud card" v-if="cloud">
     <div class="row">
-      <div>
+      <div class="badge" :class="{ on: cloud.logged_in }"><CloudIcon :size="20" /></div>
+      <div class="text">
         <div class="title">米家同步</div>
         <div class="sub" v-if="cloud.logged_in">
           账号 {{ cloud.user_id }} · {{ cloud.last_sync ? `上次同步 ${timeFmt.format(new Date(cloud.last_sync * 1000))}` : '尚未同步' }}
@@ -79,7 +81,7 @@ async function logout() {
           <div class="qr-tip">打开米家 App，点右上角「+」→「扫一扫」。<br />如果正在用这台手机看本页面，请在电脑浏览器打开本页面扫码。</div>
         </template>
         <div v-else-if="login.state === 'success'" class="qr-done">
-          <van-icon name="checked" color="#07c160" size="48" />
+          <CircleCheck :size="48" color="var(--green)" />
           <div>登录成功，正在同步…</div>
           <van-button round block type="primary" @click="showQr = false">完成</van-button>
         </div>
@@ -94,16 +96,31 @@ async function logout() {
 
 <style scoped>
 .cloud {
-  margin: 12px 16px 0;
-  background: #fff;
-  border-radius: 16px;
   padding: 16px;
 }
 .row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   gap: 12px;
+}
+.badge {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-2);
+  color: var(--text-3);
+}
+.badge.on {
+  background: var(--cool-soft);
+  color: var(--cool);
+}
+.text {
+  flex: 1;
+  min-width: 0;
 }
 .title {
   font-size: 15px;
@@ -111,22 +128,23 @@ async function logout() {
 }
 .sub {
   font-size: 12px;
-  color: #8f959e;
-  margin-top: 4px;
+  color: var(--text-3);
+  margin-top: 3px;
 }
 .result {
-  margin-top: 10px;
+  margin-top: 12px;
   font-size: 12px;
-  color: #646a73;
-  background: #f6f7f9;
-  border-radius: 8px;
-  padding: 8px 10px;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 8px 12px;
 }
 .links {
   margin-top: 10px;
   font-size: 12px;
-  color: #8f959e;
+  color: var(--text-3);
   text-align: right;
+  cursor: pointer;
 }
 .qr {
   padding: 24px 20px;
@@ -142,7 +160,7 @@ async function logout() {
 }
 .qr-tip {
   font-size: 12px;
-  color: #8f959e;
+  color: var(--text-3);
   margin-top: 8px;
   line-height: 1.6;
 }

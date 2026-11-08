@@ -1,0 +1,235 @@
+/* Design tokens. Components use these instead of raw colors so light and dark stay in step. */
+:root {
+  --bg: #eef0f5;
+  --bg-glow-1: rgba(255, 196, 120, 0.22);
+  --bg-glow-2: rgba(120, 150, 255, 0.18);
+  --surface: #ffffff;
+  --surface-2: #f4f5f8;
+  --surface-3: #e9ebf0;
+  --surface-glass: rgba(255, 255, 255, 0.72);
+  --text: #14161b;
+  --text-2: #555b67;
+  --text-3: #9298a3;
+  --line: rgba(20, 22, 27, 0.07);
+
+  --accent: #4b67f5;
+  --accent-soft: #eaeeff;
+  --accent-text: #3550d8;
+  --warm: #f7a823;
+  --warm-strong: #e58f00;
+  --warm-soft: #fff3d9;
+  --warm-glow: linear-gradient(145deg, #fff1cf 0%, #fff8e8 55%, #ffffff 100%);
+  --cool: #2a95f5;
+  --cool-soft: #e3f2ff;
+  --cool-glow: linear-gradient(145deg, #dff0ff 0%, #f1f8ff 55%, #ffffff 100%);
+  --heat: #f26b2a;
+  --heat-soft: #ffeee3;
+  --heat-glow: linear-gradient(145deg, #ffe6d6 0%, #fff4ec 55%, #ffffff 100%);
+  --green: #1fb66a;
+  --danger: #ec4141;
+
+  --radius-xl: 28px;
+  --radius-lg: 22px;
+  --radius: 16px;
+  --radius-sm: 12px;
+  --shadow-1: 0 1px 2px rgba(17, 24, 39, 0.04), 0 2px 8px rgba(17, 24, 39, 0.04);
+  --shadow-2: 0 10px 30px rgba(17, 24, 39, 0.08), 0 2px 6px rgba(17, 24, 39, 0.04);
+  --shadow-warm: 0 8px 24px rgba(247, 168, 35, 0.28);
+
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'HarmonyOS Sans SC', 'MiSans', 'Microsoft YaHei', sans-serif;
+  --font-num: 'SF Pro Display', -apple-system, 'Segoe UI', 'HarmonyOS Sans SC', 'MiSans', sans-serif;
+
+  /* Vant follows the same palette */
+  --van-primary-color: var(--accent);
+  --van-background: var(--bg);
+  --van-background-2: var(--surface);
+  --van-background-3: var(--surface);
+  --van-text-color: var(--text);
+  --van-text-color-2: var(--text-3);
+  --van-text-color-3: var(--text-3);
+  --van-border-color: var(--line);
+  --van-active-color: var(--surface-2);
+  --van-cell-group-inset-radius: var(--radius-lg);
+  --van-cell-group-inset-padding: 0 16px;
+  --van-cell-group-title-color: var(--text-3);
+  --van-cell-vertical-padding: 14px;
+  --van-cell-font-size: 15px;
+  --van-cell-label-color: var(--text-3);
+  --van-popup-round-radius: var(--radius-xl);
+  --van-popup-background: var(--bg);
+  --van-dialog-radius: var(--radius-lg);
+  --van-dialog-background: var(--surface);
+  --van-action-sheet-item-background: var(--surface);
+  --van-action-sheet-cancel-padding-color: var(--bg);
+  --van-button-radius: var(--radius-sm);
+  --van-button-default-background: var(--surface-2);
+  --van-button-default-border-color: transparent;
+  --van-field-input-text-color: var(--text);
+  --van-slider-inactive-background: var(--surface-3);
+  --van-slider-active-background: var(--accent);
+  --van-tabs-nav-background: transparent;
+  --van-tab-text-color: var(--text-3);
+  --van-tab-active-text-color: var(--text);
+  --van-tabs-bottom-bar-color: var(--accent);
+  --van-switch-on-background: var(--accent);
+  --van-toast-background: rgba(20, 22, 27, 0.86);
+  --van-empty-description-color: var(--text-3);
+  --van-stepper-background: var(--surface-2);
+  --van-stepper-button-icon-color: var(--text);
+  --van-stepper-input-background: var(--surface-2);
+  --van-stepper-input-text-color: var(--text);
+  --van-checkbox-checked-icon-color: var(--accent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1015;
+    --bg-glow-1: rgba(255, 170, 60, 0.08);
+    --bg-glow-2: rgba(90, 120, 255, 0.1);
+    --surface: #1a1d24;
+    --surface-2: #242831;
+    --surface-3: #2f3440;
+    --surface-glass: rgba(26, 29, 36, 0.78);
+    --text: #f1f3f7;
+    --text-2: #b4bac6;
+    --text-3: #7c8391;
+    --line: rgba(255, 255, 255, 0.07);
+
+    --accent: #6f86ff;
+    --accent-soft: rgba(111, 134, 255, 0.16);
+    --accent-text: #9aabff;
+    --warm-soft: rgba(247, 168, 35, 0.16);
+    --warm-glow: linear-gradient(145deg, rgba(247, 168, 35, 0.3) 0%, rgba(247, 168, 35, 0.1) 55%, #1a1d24 100%);
+    --cool-soft: rgba(42, 149, 245, 0.18);
+    --cool-glow: linear-gradient(145deg, rgba(42, 149, 245, 0.3) 0%, rgba(42, 149, 245, 0.1) 55%, #1a1d24 100%);
+    --heat-soft: rgba(242, 107, 42, 0.18);
+    --heat-glow: linear-gradient(145deg, rgba(242, 107, 42, 0.3) 0%, rgba(242, 107, 42, 0.1) 55%, #1a1d24 100%);
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-2: 0 10px 30px rgba(0, 0, 0, 0.4);
+    --shadow-warm: 0 8px 24px rgba(247, 168, 35, 0.25);
+    --van-toast-background: rgba(60, 64, 74, 0.95);
+  }
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+body {
+  background:
+    radial-gradient(1200px 600px at 0% -10%, var(--bg-glow-1), transparent 60%),
+    radial-gradient(900px 600px at 100% 0%, var(--bg-glow-2), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+button {
+  font: inherit;
+  color: inherit;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.num {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* Shared surfaces */
+.card {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+}
+.pressable {
+  transition: transform 0.12s ease, box-shadow 0.2s ease, background 0.3s ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.pressable:active {
+  transform: scale(0.97);
+}
+@media (hover: hover) {
+  .pressable:hover {
+    box-shadow: var(--shadow-2);
+  }
+}
+.section-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-3);
+  letter-spacing: 0.02em;
+  margin: 22px 4px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.room-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.room-chip {
+  font-size: 13px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.room-chip.on {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.sheet {
+  padding: 22px 0 calc(24px + env(safe-area-inset-bottom));
+}
+.sheet-title {
+  text-align: center;
+  font-size: 17px;
+  font-weight: 650;
+  margin-bottom: 16px;
+}
+.sheet-tip {
+  font-size: 12px;
+  color: var(--text-3);
+  padding: 10px 32px 0;
+  line-height: 1.6;
+}
+.sheet-actions {
+  padding: 20px 16px 0;
+}
+
+/* Vant tweaks the variables can't reach */
+.van-tabs__nav {
+  background: transparent;
+}
+.van-cell-group--inset {
+  box-shadow: var(--shadow-1);
+}
+.van-popup--bottom.van-popup--round {
+  max-width: 640px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.van-popup--bottom.van-popup--round.van-slide-up-enter-from,
+.van-popup--bottom.van-popup--round.van-slide-up-leave-to {
+  transform: translate3d(-50%, 100%, 0);
+}
+@media (min-width: 900px) {
+  .van-popup--bottom.van-popup--round {
+    bottom: 24px;
+    border-radius: var(--radius-xl);
+  }
+}

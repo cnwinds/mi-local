@@ -137,14 +137,14 @@ async function save() {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #f6f7f9;
+  background: var(--bg);
 }
 .bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 16px 20px 8px;
-  background: #fff;
+  background: var(--surface);
 }
 .heading {
   font-weight: 600;
@@ -154,17 +154,17 @@ async function save() {
   white-space: nowrap;
 }
 .cancel {
-  color: #646a73;
+  color: var(--text-2);
 }
 .save {
-  color: #3e7bfa;
+  color: var(--accent);
   font-weight: 600;
 }
 .sub {
-  background: #fff;
+  background: var(--surface);
   text-align: center;
   font-size: 12px;
-  color: #8f959e;
+  color: var(--text-3);
   padding-bottom: 12px;
 }
 .scroll {
@@ -177,27 +177,27 @@ async function save() {
 }
 .action-select {
   border: none;
-  background: #e8f0ff;
-  color: #3e7bfa;
+  background: var(--accent-soft);
+  color: var(--accent);
   border-radius: 8px;
   padding: 4px 8px;
   font-size: 14px;
 }
 .try {
   font-size: 13px;
-  color: #3e7bfa;
+  color: var(--accent);
 }
 .offline {
   font-size: 12px;
-  color: #c4c7cc;
+  color: var(--text-3);
 }
 .on {
   font-size: 12px;
-  color: #f5a623;
+  color: var(--warm);
 }
 .hint {
   font-size: 12px;
-  color: #8f959e;
+  color: var(--text-3);
   padding: 8px 32px;
 }
 </style>

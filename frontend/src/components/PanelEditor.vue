@@ -4,6 +4,7 @@ import { showToast } from 'vant'
 import { api, type PanelSize } from '../api'
 import { loadPanels } from '../store'
 import { panelLayout } from '../rooms'
+import { ChevronDown, ChevronUp } from 'lucide-vue-next'
 import DeviceIcon from './DeviceIcon.vue'
 
 const props = defineProps<{ room: string; show: boolean }>()
@@ -52,15 +53,15 @@ async function reset() {
       <div class="tip">「大」是可以直接操作的大卡片，「小」放在下方的小格子里，「隐藏」不在面板显示。用箭头调整顺序。</div>
       <div class="scroll">
         <div v-for="(item, i) in items" :key="item.id" class="row" :class="{ hidden: item.size === 'hidden' }">
-          <DeviceIcon :kind="item.device.kind" class="icon" />
+          <DeviceIcon :kind="item.device.kind" :model="item.device.model" :size="34" class="icon" />
           <div class="name">{{ item.device.name }}</div>
           <div class="sizes">
             <button v-for="[size, label] in SIZES" :key="size" :class="{ selected: item.size === size }"
               @click="item.size = size">{{ label }}</button>
           </div>
           <div class="order">
-            <van-icon name="arrow-up" :class="{ disabled: i === 0 }" @click="move(i, -1)" />
-            <van-icon name="arrow-down" :class="{ disabled: i === items.length - 1 }" @click="move(i, 1)" />
+            <button :disabled="i === 0" @click="move(i, -1)"><ChevronUp :size="16" /></button>
+            <button :disabled="i === items.length - 1" @click="move(i, 1)"><ChevronDown :size="16" /></button>
           </div>
         </div>
         <div class="reset" @click="reset">恢复默认布局</div>
@@ -74,95 +75,108 @@ async function reset() {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #f6f7f9;
+  background: var(--bg);
 }
 .bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px 8px;
-  background: #fff;
+  padding: 18px 20px 8px;
+  background: var(--surface);
 }
 .heading {
-  font-weight: 600;
+  font-weight: 650;
+  font-size: 16px;
 }
 .cancel {
-  color: #646a73;
+  color: var(--text-2);
+  cursor: pointer;
 }
 .save {
-  color: #3e7bfa;
-  font-weight: 600;
+  color: var(--accent);
+  font-weight: 650;
+  cursor: pointer;
 }
 .tip {
-  background: #fff;
+  background: var(--surface);
   font-size: 12px;
-  color: #8f959e;
-  padding: 0 20px 12px;
+  color: var(--text-3);
+  padding: 0 20px 14px;
+  line-height: 1.6;
 }
 .scroll {
   flex: 1;
   overflow-y: auto;
-  padding: 12px 16px 40px;
+  padding: 14px 16px 40px;
 }
 .row {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: #fff;
-  border-radius: 14px;
-  padding: 10px 12px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+  padding: 10px 10px 10px 12px;
   margin-bottom: 8px;
 }
 .row.hidden .name,
 .row.hidden .icon {
-  opacity: 0.4;
+  opacity: 0.35;
 }
 .icon {
-  transform: scale(0.8);
   flex: none;
 }
 .name {
   flex: 1;
   min-width: 0;
   font-size: 14px;
+  font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .sizes {
   display: flex;
-  background: #f0f1f4;
+  background: var(--surface-2);
   border-radius: 10px;
-  padding: 2px;
+  padding: 3px;
 }
 .sizes button {
-  border: none;
-  font: inherit;
   font-size: 12px;
-  padding: 5px 9px;
+  padding: 5px 10px;
   border-radius: 8px;
-  background: transparent;
-  color: #646a73;
+  color: var(--text-2);
 }
 .sizes button.selected {
-  background: #fff;
-  color: #3e7bfa;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  background: var(--surface);
+  color: var(--accent-text);
+  font-weight: 600;
+  box-shadow: var(--shadow-1);
 }
 .order {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  color: #646a73;
-  font-size: 16px;
+  gap: 2px;
 }
-.order .disabled {
-  opacity: 0.2;
+.order button {
+  width: 28px;
+  height: 20px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-2);
+  background: var(--surface-2);
+}
+.order button:disabled {
+  opacity: 0.25;
 }
 .reset {
   text-align: center;
-  color: #3e7bfa;
+  color: var(--accent);
   font-size: 14px;
   padding: 16px;
+  cursor: pointer;
 }
 </style>
+

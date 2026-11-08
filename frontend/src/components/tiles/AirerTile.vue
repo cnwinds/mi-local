@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { ArrowDown, ArrowUp, Lightbulb, Pause } from 'lucide-vue-next'
 import type { Device } from '../../api'
 import { sendCommand } from '../../store'
 import TileHeader from './TileHeader.vue'
@@ -18,23 +19,20 @@ const light = () => sendCommand(props.device.id, 'set_light', !s.value.light, { 
 </script>
 
 <template>
-  <div class="airer-tile" :class="{ offline: !online }">
-    <TileHeader kind="airer" :name="device.name" :status="status" :active="online && s.motor !== 'stop' && !!s.motor" />
+  <div class="airer-tile card" :class="{ offline: !online }">
+    <TileHeader kind="airer" :name="device.name" :status="status" :active="online && !!s.motor && s.motor !== 'stop'" />
     <div v-if="online" class="buttons">
-      <button @click="move('up')"><van-icon name="arrow-up" />升起</button>
-      <button @click="move('stop')"><van-icon name="pause" />暂停</button>
-      <button @click="move('down')"><van-icon name="arrow-down" />降下</button>
-      <button :class="{ selected: s.light }" @click="light"><van-icon name="bulb-o" />照明</button>
+      <button :class="{ moving: s.motor === 'up' }" @click="move('up')"><ArrowUp :size="22" />升起</button>
+      <button @click="move('stop')"><Pause :size="22" />暂停</button>
+      <button :class="{ moving: s.motor === 'down' }" @click="move('down')"><ArrowDown :size="22" />降下</button>
+      <button class="light" :class="{ selected: s.light }" @click="light"><Lightbulb :size="22" />照明</button>
     </div>
   </div>
 </template>
 
 <style scoped>
 .airer-tile {
-  background: #fff;
-  border-radius: 18px;
-  padding: 14px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  padding: 16px;
 }
 .offline {
   opacity: 0.5;
@@ -43,30 +41,30 @@ const light = () => sendCommand(props.device.id, 'set_light', !s.value.light, { 
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 16px;
 }
 .buttons button {
-  border: none;
-  font: inherit;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 10px 0;
-  border-radius: 14px;
-  background: #f0f1f4;
-  color: #1f2329;
+  gap: 6px;
+  padding: 14px 0 12px;
+  border-radius: 16px;
+  background: var(--surface-2);
   font-size: 12px;
-  -webkit-tap-highlight-color: transparent;
-}
-.buttons .van-icon {
-  font-size: 20px;
+  color: var(--text-2);
+  transition: all 0.2s;
 }
 .buttons button:active {
-  background: #e3e6ea;
+  background: var(--surface-3);
 }
-.buttons button.selected {
-  background: #f5a623;
+.buttons button.moving {
+  background: var(--accent);
   color: #fff;
+}
+.buttons .light.selected {
+  background: var(--warm);
+  color: #fff;
+  box-shadow: var(--shadow-warm);
 }
 </style>

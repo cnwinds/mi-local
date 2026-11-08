@@ -183,23 +183,23 @@ async function remove() {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #f6f7f9;
+  background: var(--bg);
 }
 .bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 16px 20px 12px;
-  background: #fff;
+  background: var(--surface);
 }
 .heading {
   font-weight: 600;
 }
 .cancel {
-  color: #646a73;
+  color: var(--text-2);
 }
 .save {
-  color: #3e7bfa;
+  color: var(--accent);
   font-weight: 600;
 }
 .scroll {
@@ -217,35 +217,35 @@ async function remove() {
   width: 40px;
   height: 40px;
   border-radius: 12px;
-  background: #fff;
+  background: var(--surface);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 22px;
 }
 .icon.selected {
-  box-shadow: 0 0 0 2px #3e7bfa;
+  box-shadow: 0 0 0 2px var(--accent);
 }
 .group {
   margin: 12px 16px 0;
 }
 .group-title {
   font-size: 13px;
-  color: #8f959e;
+  color: var(--text-3);
   margin: 8px 4px;
 }
 .device {
-  background: #fff;
+  background: var(--surface);
   border-radius: 14px;
   padding: 12px;
   margin-bottom: 8px;
 }
 .device.picked {
-  box-shadow: 0 0 0 1.5px #3e7bfa inset;
+  box-shadow: 0 0 0 1.5px var(--accent) inset;
 }
 .device-name {
   font-size: 14px;
-  color: #1f2329;
+  color: var(--text);
   margin-bottom: 8px;
 }
 .choices {
@@ -259,11 +259,11 @@ async function remove() {
   font-size: 13px;
   padding: 6px 14px;
   border-radius: 10px;
-  background: #f0f1f4;
-  color: #646a73;
+  background: var(--surface-2);
+  color: var(--text-2);
 }
 .choices button.selected {
-  background: #3e7bfa;
+  background: var(--accent);
   color: #fff;
 }
 .value {
@@ -272,16 +272,16 @@ async function remove() {
   gap: 6px;
   margin-top: 10px;
   font-size: 13px;
-  color: #646a73;
+  color: var(--text-2);
 }
 .more,
 .delete {
   text-align: center;
   font-size: 14px;
   padding: 16px;
-  color: #3e7bfa;
+  color: var(--accent);
 }
 .delete {
-  color: #ee0a24;
+  color: var(--danger);
 }
 </style>

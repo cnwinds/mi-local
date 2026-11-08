@@ -56,10 +56,10 @@ watch(() => pairing.value?.found.length, load)
     <van-cell-group inset>
       <template v-for="c in sorted" :key="c.sid">
         <van-cell v-if="c.device" class="multiline" :title="c.device.name" :label="label(c)" is-link center @click="emit('edit', c.device)">
-          <template #icon><DeviceIcon :kind="c.device.kind" :active="c.online" class="cell-icon" /></template>
+          <template #icon><DeviceIcon :kind="c.device.kind" :model="c.device.model" :size="36" class="cell-icon" :class="{ dim: !c.online }" /></template>
         </van-cell>
         <van-cell v-else title="未知设备" :label="label(c)" center>
-          <template #icon><DeviceIcon kind="other" class="cell-icon" /></template>
+          <template #icon><DeviceIcon kind="other" :size="36" class="cell-icon dim" /></template>
           <template #value><span class="stale">米家里没有，可能是残留</span></template>
         </van-cell>
       </template>
@@ -71,25 +71,29 @@ watch(() => pairing.value?.found.length, load)
 <style scoped>
 .tip {
   font-size: 12px;
-  color: #8f959e;
+  color: var(--text-3);
   padding: 12px 20px 8px;
 }
 .error {
-  color: #ee0a24;
+  color: var(--danger);
 }
 .reload {
-  color: #3e7bfa;
+  color: var(--accent);
   margin-left: 6px;
+  cursor: pointer;
 }
 .multiline :deep(.van-cell__label) {
   white-space: pre-line;
 }
 .cell-icon {
   margin-right: 12px;
-  transform: scale(0.85);
+}
+.dim {
+  opacity: 0.4;
+  filter: grayscale(1);
 }
 .stale {
   font-size: 12px;
-  color: #c4c7cc;
+  color: var(--text-3);
 }
 </style>

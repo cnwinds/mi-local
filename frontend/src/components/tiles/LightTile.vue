@@ -18,13 +18,13 @@ const brightness = computed(() =>
 )
 const preview = ref<number | null>(null)
 const level = computed(() => preview.value ?? brightness.value)
+const shownOn = computed(() => (preview.value !== null ? preview.value > 0 : on.value))
 
 const name = computed(() => props.title ?? single.value?.name ?? '')
-const status = computed(() => {
+const sub = computed(() => {
   if (!online.value.length) return '离线'
-  if (preview.value !== null) return preview.value ? `${preview.value}%` : '关闭'
-  if (!single.value) return lit.value.length ? `${lit.value.length}/${props.devices.length} 亮 · ${brightness.value}%` : '全部关闭'
-  return on.value ? `${brightness.value}%` : '关闭'
+  if (!single.value) return lit.value.length ? `${lit.value.length}/${props.devices.length} 盏亮着` : '全部关闭'
+  return shownOn.value ? '' : '关闭'
 })
 
 const el = ref<HTMLElement>()
@@ -96,19 +96,22 @@ onBeforeUnmount(() => clearTimeout(pressTimer))
 <template>
   <div
     ref="el"
-    class="light-tile"
-    :class="{ on: on || (preview ?? 0) > 0, offline: !online.length, group: !single }"
+    class="light-tile card pressable"
+    :class="{ on: shownOn, offline: !online.length, dragging: preview !== null }"
     @pointerdown="down"
     @pointermove="move"
     @pointerup="up"
     @pointercancel="cancel"
     @contextmenu.prevent
   >
-    <div class="fill" :style="{ width: `${on || preview !== null ? level : 0}%` }" />
+    <div class="fill" :style="{ width: `${shownOn ? level : 0}%` }" />
     <div class="content">
-      <DeviceIcon kind="light" :active="on || (preview ?? 0) > 0" />
+      <div class="top">
+        <DeviceIcon kind="light" :model="single?.model" :active="shownOn" :size="42" />
+        <div v-if="shownOn && online.length" class="level num">{{ level }}<small>%</small></div>
+      </div>
       <div class="name">{{ name }}</div>
-      <div class="status">{{ status }}</div>
+      <div class="sub">{{ sub || '左右滑动调亮度' }}</div>
     </div>
   </div>
 </template>
@@ -117,52 +120,67 @@ onBeforeUnmount(() => clearTimeout(pressTimer))
 .light-tile {
   position: relative;
   overflow: hidden;
-  background: #fff;
-  border-radius: 18px;
-  padding: 14px;
-  min-height: 112px;
+  padding: 16px;
+  min-height: 132px;
   box-sizing: border-box;
-  user-select: none;
-  -webkit-user-select: none;
   -webkit-touch-callout: none;
-  -webkit-tap-highlight-color: transparent;
   touch-action: pan-y;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  transition: transform 0.1s;
-}
-.light-tile:active {
-  transform: scale(0.98);
+  cursor: pointer;
 }
 .fill {
   position: absolute;
   inset: 0 auto 0 0;
-  background: linear-gradient(90deg, #fff1cc, #ffe39a);
-  transition: width 0.15s;
+  background: var(--warm-glow);
+  transition: width 0.18s ease;
+}
+.light-tile.on .fill {
+  background: linear-gradient(90deg, rgba(255, 210, 120, 0.55), rgba(255, 225, 160, 0.35));
+}
+.dragging .fill {
+  transition: none;
 }
 .content {
   position: relative;
 }
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.level {
+  font-size: 26px;
+  font-weight: 600;
+  color: var(--warm-strong);
+}
+.level small {
+  font-size: 13px;
+  margin-left: 1px;
+}
 .name {
-  margin-top: 12px;
+  margin-top: 14px;
   font-size: 15px;
-  font-weight: 500;
-  color: #1f2329;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.status {
+.sub {
   margin-top: 2px;
   font-size: 12px;
-  color: #8f959e;
+  color: var(--text-3);
 }
-.on .status {
-  color: #b9770e;
+.on .sub {
+  color: var(--text-2);
 }
 .offline {
   opacity: 0.5;
 }
-.group .name {
-  font-weight: 600;
+@media (prefers-color-scheme: dark) {
+  .light-tile.on .fill {
+    background: linear-gradient(90deg, rgba(247, 168, 35, 0.35), rgba(247, 168, 35, 0.15));
+  }
+  .level {
+    color: var(--warm);
+  }
 }
 </style>

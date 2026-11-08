@@ -4,6 +4,7 @@ import { showFailToast } from 'vant'
 import { api } from '../api'
 import { devices, loadPairing, loadRules, pairing } from '../store'
 import BindingEditor from './BindingEditor.vue'
+import { Radio } from 'lucide-vue-next'
 
 const show = ref(false)
 const configure = ref<string | null>(null)
@@ -36,9 +37,10 @@ async function start() {
 </script>
 
 <template>
-  <div class="pair">
+  <div class="pair card" :class="{ active }">
     <div class="row">
-      <div>
+      <div class="badge"><Radio :size="20" /></div>
+      <div class="text">
         <div class="title">添加子设备</div>
         <div class="sub">{{ active ? `网关 2 配对中，剩余 ${remaining} 秒` : '把无线开关、窗帘等配对到网关 2' }}</div>
       </div>
@@ -57,7 +59,7 @@ async function start() {
         </ol>
 
         <div class="status" v-if="active">
-          <van-loading size="18" color="#3e7bfa" />
+          <van-loading size="18" color="var(--accent)" />
           <span>配对中，剩余 {{ remaining }} 秒</span>
         </div>
 
@@ -83,16 +85,39 @@ async function start() {
 
 <style scoped>
 .pair {
-  margin: 12px 16px 0;
-  background: #fff;
-  border-radius: 16px;
   padding: 16px;
+  transition: box-shadow 0.3s;
+}
+.pair.active {
+  box-shadow: 0 0 0 2px var(--accent), var(--shadow-1);
 }
 .row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   gap: 12px;
+}
+.badge {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.active .badge {
+  animation: pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% {
+    box-shadow: 0 0 0 6px var(--accent-soft);
+  }
+}
+.text {
+  flex: 1;
+  min-width: 0;
 }
 .title {
   font-size: 15px;
@@ -100,23 +125,15 @@ async function start() {
 }
 .sub {
   font-size: 12px;
-  color: #8f959e;
-  margin-top: 4px;
-}
-.sheet {
-  padding: 20px 0 calc(24px + env(safe-area-inset-bottom));
-}
-.sheet-title {
-  text-align: center;
-  font-weight: 600;
-  margin-bottom: 8px;
+  color: var(--text-3);
+  margin-top: 3px;
 }
 .steps {
   margin: 0;
-  padding: 8px 24px 4px 40px;
+  padding: 0 24px 4px 40px;
   font-size: 13px;
-  color: #646a73;
-  line-height: 1.7;
+  color: var(--text-2);
+  line-height: 1.8;
 }
 .status {
   display: flex;
@@ -125,7 +142,7 @@ async function start() {
   gap: 8px;
   margin: 12px 0;
   font-size: 14px;
-  color: #3e7bfa;
+  color: var(--accent);
 }
 .actions {
   padding: 16px 16px 0;

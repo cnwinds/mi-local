@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch, type Component } from 'vue'
+import { Droplet, Flame, Minus, MoveVertical, Plus, Power, Snowflake, Sparkles, Wind } from 'lucide-vue-next'
 import type { AcCaps, AcMode, Device } from '../../api'
 import { sendCommand } from '../../store'
 import { AC_MODE_NAMES } from '../../rooms'
@@ -8,12 +9,13 @@ import TileHeader from './TileHeader.vue'
 const props = defineProps<{ device: Device }>()
 
 const DEFAULT_CAPS: AcCaps = { modes: ['cool', 'heat', 'dry', 'fan'], temp_min: 16, temp_max: 31, temp_step: 1, fan_levels: 3 }
-const MODE_ICONS: Record<AcMode, string> = { cool: '❄', heat: '☀', dry: '💧', fan: '༄', auto: 'A' }
+const MODE_ICONS: Record<AcMode, Component> = { cool: Snowflake, heat: Flame, dry: Droplet, fan: Wind, auto: Sparkles }
 
 const s = computed(() => props.device.state)
 const caps = computed(() => s.value.caps ?? DEFAULT_CAPS)
 const online = computed(() => !!s.value.online)
 const on = computed(() => online.value && !!s.value.power)
+const tone = computed(() => (s.value.mode === 'heat' ? 'heat' : 'cool'))
 
 // Temperature taps are collected for a moment so several presses become one command.
 const target = ref(s.value.target_temp ?? 26)
@@ -57,166 +59,204 @@ const setSwing = () => sendCommand(props.device.id, 'set_swing', !s.value.swing,
 </script>
 
 <template>
-  <div class="ac-tile" :class="[{ on, offline: !online }, on ? s.mode : '']">
-    <TileHeader kind="ac" :name="device.name" :status="status" :active="on">
-      <button v-if="online" class="power" :class="{ on }" @click="power">
-        <svg viewBox="0 0 24 24"><path d="M11 3h2v10h-2V3zm5.6 2.4 1.4-1.4A9 9 0 1 1 6 4l1.4 1.4A7 7 0 1 0 16.6 5.4z" /></svg>
+  <div class="ac-tile card" :class="[tone, { on, offline: !online }]">
+    <TileHeader kind="ac" :name="device.name" :status="status" :active="on" :tone="tone">
+      <button v-if="online" class="power" :class="{ on }" :title="on ? '关机' : '开机'" @click="power">
+        <Power :size="20" :stroke-width="2.4" />
       </button>
     </TileHeader>
 
     <template v-if="on">
-      <div class="temp-row">
-        <button class="step" :disabled="target <= caps.temp_min" @click="bump(-1)">−</button>
-        <div class="temp">
-          {{ target }}<span class="unit">°C</span>
-        </div>
-        <button class="step" :disabled="target >= caps.temp_max" @click="bump(1)">+</button>
+      <div class="dial">
+        <button class="step" :disabled="target <= caps.temp_min" @click="bump(-1)"><Minus :size="22" /></button>
+        <div class="temp num">{{ target }}<span class="unit">°C</span></div>
+        <button class="step" :disabled="target >= caps.temp_max" @click="bump(1)"><Plus :size="22" /></button>
       </div>
-      <div class="chips">
-        <button v-for="m in caps.modes" :key="m" class="chip" :class="{ selected: s.mode === m }" @click="setMode(m)">
-          <span class="mode-icon">{{ MODE_ICONS[m] }}</span>{{ AC_MODE_NAMES[m] }}
+      <div class="segmented">
+        <button v-for="m in caps.modes" :key="m" :class="{ selected: s.mode === m }" @click="setMode(m)">
+          <component :is="MODE_ICONS[m]" :size="16" />{{ AC_MODE_NAMES[m] }}
         </button>
       </div>
-      <div class="chips fan">
-        <span class="label">风速</span>
-        <button v-for="f in fanOptions" :key="f.value" class="chip small" :class="{ selected: s.fan_level === f.value }"
-          @click="setFan(f.value)">{{ f.label }}</button>
-        <button class="chip small swing" :class="{ selected: s.swing }" @click="setSwing">摆风</button>
+      <div class="fan-row">
+        <span class="label"><Wind :size="14" />风速</span>
+        <div class="fans">
+          <button v-for="f in fanOptions" :key="f.value" :class="{ selected: s.fan_level === f.value }" @click="setFan(f.value)">
+            {{ f.label }}
+          </button>
+        </div>
+        <button class="swing" :class="{ selected: s.swing }" @click="setSwing"><MoveVertical :size="14" />摆风</button>
       </div>
     </template>
     <button v-else-if="online" class="start" @click="power">
-      开机 · {{ AC_MODE_NAMES[s.mode ?? 'cool'] }} {{ s.target_temp ?? '' }}°
+      <Power :size="18" />开机 · {{ AC_MODE_NAMES[s.mode ?? 'cool'] }} <span class="num">{{ s.target_temp ?? '' }}°</span>
     </button>
   </div>
 </template>
 
 <style scoped>
 .ac-tile {
-  background: #fff;
-  border-radius: 18px;
-  padding: 14px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  padding: 16px;
   transition: background 0.3s;
 }
-.ac-tile.on.cool,
-.ac-tile.on.dry,
-.ac-tile.on.fan,
-.ac-tile.on.auto {
-  background: linear-gradient(160deg, #eaf6ff, #fff 70%);
+.ac-tile.on.cool {
+  background: var(--cool-glow);
 }
 .ac-tile.on.heat {
-  background: linear-gradient(160deg, #fff1e6, #fff 70%);
+  background: var(--heat-glow);
 }
 .offline {
   opacity: 0.5;
 }
-button {
-  border: none;
-  font: inherit;
-  -webkit-tap-highlight-color: transparent;
-}
 .power {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
-  background: #f0f1f4;
-  color: #9aa0ab;
+  background: var(--surface-2);
+  color: var(--text-3);
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: all 0.2s;
 }
-.power svg {
-  width: 20px;
-  height: 20px;
-  fill: currentColor;
-}
-.power.on {
-  background: #1e9bf0;
+.cool .power.on {
+  background: var(--cool);
   color: #fff;
+  box-shadow: 0 6px 18px rgba(42, 149, 245, 0.35);
 }
 .heat .power.on {
-  background: #f57c23;
+  background: var(--heat);
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(242, 107, 42, 0.35);
 }
-.temp-row {
+.dial {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 14px 4px 10px;
+  margin: 18px 8px 16px;
 }
 .step {
-  width: 52px;
-  height: 52px;
+  width: 54px;
+  height: 54px;
   border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
-  font-size: 26px;
-  color: #1f2329;
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s;
 }
 .step:disabled {
   opacity: 0.3;
 }
 .step:active {
-  transform: scale(0.94);
+  transform: scale(0.92);
 }
 .temp {
-  font-size: 48px;
-  font-weight: 300;
-  color: #1f2329;
-  font-variant-numeric: tabular-nums;
+  font-size: 56px;
+  font-weight: 250;
+  line-height: 1;
 }
 .unit {
   font-size: 18px;
+  font-weight: 400;
   margin-left: 2px;
-  color: #8f959e;
+  color: var(--text-3);
+  vertical-align: top;
 }
-.chips {
+.segmented {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 8px;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--surface-2);
 }
-.chip {
+.segmented button {
   flex: 1;
-  min-width: 56px;
-  padding: 8px 0;
-  border-radius: 12px;
-  background: #f0f1f4;
-  color: #646a73;
-  font-size: 13px;
-}
-.chip.selected {
-  background: #1e9bf0;
-  color: #fff;
-}
-.heat .chip.selected {
-  background: #f57c23;
-}
-.mode-icon {
-  margin-right: 3px;
-}
-.fan {
+  display: flex;
   align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 36px;
+  border-radius: 11px;
+  font-size: 13px;
+  color: var(--text-2);
+  transition: all 0.2s;
+}
+.segmented button.selected {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: var(--shadow-1);
+}
+.cool .segmented button.selected svg {
+  color: var(--cool);
+}
+.heat .segmented button.selected svg {
+  color: var(--heat);
+}
+.fan-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
 }
 .label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: 12px;
-  color: #8f959e;
-  margin-right: 2px;
-}
-.chip.small {
+  color: var(--text-3);
   flex: none;
-  min-width: 40px;
-  padding: 6px 8px;
+}
+.fans {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  flex: 1;
+  scrollbar-width: none;
+}
+.fans::-webkit-scrollbar {
+  display: none;
+}
+.fans button,
+.swing {
+  flex: none;
+  min-width: 34px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 12px;
+  color: var(--text-2);
 }
 .swing {
-  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.fans button.selected,
+.swing.selected {
+  background: var(--text);
+  color: var(--surface);
+  font-weight: 600;
 }
 .start {
   width: 100%;
-  margin-top: 12px;
-  padding: 12px 0;
+  margin-top: 14px;
+  height: 48px;
   border-radius: 14px;
-  background: #f0f6ff;
-  color: #3e7bfa;
+  background: var(--cool-soft);
+  color: var(--cool);
   font-size: 15px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.heat .start {
+  background: var(--heat-soft);
+  color: var(--heat);
 }
 </style>

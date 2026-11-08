@@ -2,15 +2,15 @@
 import type { Kind } from '../../api'
 import DeviceIcon from '../DeviceIcon.vue'
 
-defineProps<{ kind: Kind; name: string; status: string; active?: boolean }>()
+defineProps<{ kind: Kind; model?: string; name: string; status: string; active?: boolean; tone?: 'warm' | 'cool' | 'heat' | 'accent' }>()
 </script>
 
 <template>
   <div class="tile-header">
-    <DeviceIcon :kind="kind" :active="active" class="icon" />
+    <DeviceIcon :kind="kind" :model="model" :active="active" :tone="tone" :size="42" />
     <div class="text">
       <div class="name">{{ name }}</div>
-      <div class="status" :class="{ active }">{{ status }}</div>
+      <div class="status">{{ status }}</div>
     </div>
     <slot />
   </div>
@@ -20,33 +20,26 @@ defineProps<{ kind: Kind; name: string; status: string; active?: boolean }>()
 .tile-header {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
-}
-.icon {
-  flex: none;
 }
 .text {
   flex: 1;
   min-width: 0;
 }
 .name {
-  font-size: 15px;
-  font-weight: 500;
-  color: #1f2329;
+  font-size: 16px;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .status {
   margin-top: 2px;
-  font-size: 12px;
-  color: #8f959e;
+  font-size: 13px;
+  color: var(--text-3);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.status.active {
-  color: #3e7bfa;
 }
 </style>

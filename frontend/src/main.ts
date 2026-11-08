@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import Vant from 'vant'
 import 'vant/lib/index.css'
+import './theme.css'
 import App from './App.vue'
 import { connect } from './store'
 

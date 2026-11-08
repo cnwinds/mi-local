@@ -20,13 +20,13 @@ const status = computed(() => {
     case 'light':
       return s.value.power ? `${s.value.brightness}%` : '关闭'
     case 'plug':
-      return s.value.power ? `${s.value.load_power ?? 0}W` : '关闭'
+      return s.value.power ? `${s.value.load_power ?? 0} W` : '关闭'
     case 'curtain':
-      return `开合 ${s.value.position ?? 0}%`
+      return `打开 ${s.value.position ?? 0}%`
     case 'ac':
       return s.value.power ? `${AC_MODE_NAMES[s.value.mode ?? 'auto']} ${s.value.target_temp}°` : '关闭'
     case 'doorbell':
-      return '点击响铃'
+      return '点按响铃'
     default:
       return s.value.power === undefined ? '在线' : s.value.power ? '开启' : '关闭'
   }
@@ -47,46 +47,42 @@ function tap() {
 </script>
 
 <template>
-  <div class="small-tile" :class="{ active, offline: !online }" @click="tap">
-    <DeviceIcon :kind="device.kind" :active="active" class="icon" />
-    <div class="name">{{ device.name }}</div>
-    <div class="status">{{ status }}</div>
+  <div class="small-tile card pressable" :class="{ active, offline: !online }" @click="tap">
+    <DeviceIcon :kind="device.kind" :model="device.model" :active="active" :size="36" />
+    <div class="text">
+      <div class="name">{{ device.name }}</div>
+      <div class="status">{{ status }}</div>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .small-tile {
-  background: #fff;
-  border-radius: 16px;
-  padding: 10px;
-  text-align: center;
-  user-select: none;
-  -webkit-tap-highlight-color: transparent;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  transition: transform 0.1s;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  min-width: 0;
 }
-.small-tile:active {
-  transform: scale(0.96);
-}
-.icon {
-  margin: 0 auto;
-  transform: scale(0.85);
+.text {
+  min-width: 0;
 }
 .name {
-  margin-top: 4px;
-  font-size: 13px;
-  color: #1f2329;
+  font-size: 14px;
+  font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .status {
-  margin-top: 2px;
-  font-size: 11px;
-  color: #8f959e;
+  margin-top: 1px;
+  font-size: 12px;
+  color: var(--text-3);
 }
 .active .status {
-  color: #3e7bfa;
+  color: var(--accent-text);
 }
 .offline {
   opacity: 0.5;
