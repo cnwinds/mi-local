@@ -16,6 +16,8 @@ HOST = "https://miot-spec.org"
 CACHE_DIR = DATA_DIR / "specs"
 INSTANCES_MAX_AGE = 7 * 86400
 SKIP_SERVICES = {"device-information"}
+SKIP_PROPS = {"audio-id"}
+TEMPERATURE_PROPS = {"temperature", "target-temperature"}
 
 # Fallbacks for specs that ship without a zh_cn translation, keyed by the urn name.
 SERVICE_ZH = {
@@ -23,9 +25,12 @@ SERVICE_ZH = {
     "speaker": "扬声器", "microphone": "麦克风", "intelligent-speaker": "智能音箱", "play-control": "播放",
     "clock": "闹钟", "no-disturb": "免打扰", "filter": "滤芯", "alarm": "提示音", "indicator-light": "指示灯",
     "physical-controls-locked": "童锁", "air-purifier": "空气净化器", "fan": "风扇", "dehumidifier": "除湿机",
+    "induction-cooker": "电磁炉", "toilet": "马桶盖", "microwave-oven": "微波炉", "water-purifier": "净水器",
 }
 PROP_ZH = {
-    "on": "开关", "mode": "模式", "fan-level": "风量", "target-temperature": "目标温度", "temperature": "温度",
+    "on": "开关", "mode": "模式", "fan-level": "风量", "target-temperature": "目标温度", "temperature": "当前温度",
+    "heat-level": "火力", "working-time": "已工作", "filter-used-time": "滤芯已用时间", "filter-used-flow": "滤芯已用水量",
+    "off-delay-time": "定时关机", "tds-in": "入水 TDS", "tds-out": "出水 TDS", "countdown-time": "倒计时",
     "status": "状态", "fault": "故障", "brightness": "亮度", "color-temperature": "色温", "volume": "音量",
     "mute": "静音", "pm2.5-density": "PM2.5", "relative-humidity": "湿度", "target-humidity": "目标湿度",
     "filter-life-level": "滤芯剩余", "filter-left-time": "滤芯剩余时间", "left-time": "剩余时间",
@@ -71,13 +76,13 @@ def parse(spec: dict, zh: dict[str, str]) -> list[dict]:
         if _name(s["type"]) in SKIP_SERVICES:
             continue
         sk = f"service:{s['iid']:03}"
-        service = zh.get(sk) or SERVICE_ZH.get(_name(s["type"])) or s.get("description") or _name(s["type"])
+        service = (zh.get(sk) or "").strip() or SERVICE_ZH.get(_name(s["type"])) or s.get("description") or _name(s["type"])
         for p in s.get("properties", []):
-            if "read" not in p.get("access", []):
+            if "read" not in p.get("access", []) or _name(p["type"]) in SKIP_PROPS:
                 continue
             pk = f"{sk}:property:{p['iid']:03}"
             vendor = p["type"].split(":")[1] != "miot-spec-v2"
-            label = zh.get(pk) or PROP_ZH.get(_name(p["type"]))
+            label = (zh.get(pk) or "").strip() or PROP_ZH.get(_name(p["type"]))
             values = [{"value": v["value"],
                        "label": zh.get(f"{pk}:valuelist:{i:03}") or VALUE_ZH.get(v["description"]) or v["description"]}
                       for i, v in enumerate(p.get("value-list", []))]
@@ -85,6 +90,8 @@ def parse(spec: dict, zh: dict[str, str]) -> list[dict]:
             if vendor and (not label or p["format"] == "string" or (p["format"] in ("uint32", "int32") and not values)):
                 continue
             unit = p.get("unit")
+            if unit in (None, "none") and _name(p["type"]) in TEMPERATURE_PROPS:
+                unit = "celsius"
             fields.append({
                 "key": f"{s['iid']}.{p['iid']}", "siid": s["iid"], "piid": p["iid"],
                 "service": service, "name": label or p.get("description") or _name(p["type"]),
@@ -98,18 +105,18 @@ def parse(spec: dict, zh: dict[str, str]) -> list[dict]:
 def load_fields(model: str) -> list[dict] | None:
     """Fields for a model, from the disk cache or miot-spec.org. None if the model has no spec."""
     cache = CACHE_DIR / f"{model}.json"
-    if cache.exists():
-        return json.loads(cache.read_text(encoding="utf-8"))["fields"]
-    urn = _urn_for(model)
-    if not urn:
-        return None
-    spec = _get("/miot-spec-v2/instance", type=urn)
-    try:
-        zh = _get("/instance/v2/multiLanguage", urn=urn).get("data", {}).get("zh_cn", {})
-    except Exception as e:
-        log.debug("no translation for %s: %s", model, e)
-        zh = {}
-    fields = parse(spec, zh)
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    cache.write_text(json.dumps({"urn": urn, "fields": fields}, ensure_ascii=False), encoding="utf-8")
-    return fields
+    cached = json.loads(cache.read_text(encoding="utf-8")) if cache.exists() else {}
+    if "spec" not in cached:
+        urn = _urn_for(model)
+        if not urn:
+            return None
+        spec = _get("/miot-spec-v2/instance", type=urn)
+        try:
+            zh = _get("/instance/v2/multiLanguage", urn=urn).get("data", {}).get("zh_cn", {})
+        except Exception as e:
+            log.debug("no translation for %s: %s", model, e)
+            zh = {}
+        cached = {"urn": urn, "spec": spec, "zh": zh}
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        cache.write_text(json.dumps(cached, ensure_ascii=False), encoding="utf-8")
+    return parse(cached["spec"], cached["zh"])
