@@ -89,7 +89,7 @@ class Gateway2:
         cmd = msg.get("cmd")
         sid = norm_sid(msg.get("sid", ""))
         data = json.loads(msg.get("data") or "{}")
-        if cmd in ("read_ack", "write_ack"):
+        if cmd.endswith("_ack"):
             fut = self._pending.pop((cmd, sid), None)
             if fut and not fut.done():
                 fut.set_result(data)
@@ -109,8 +109,7 @@ class Gateway2:
 
     async def _request(self, cmd: str, sid: str, payload: dict, timeout=3.0, attempts=2) -> dict:
         # The gateway drops requests that arrive in bursts, so send one at a time.
-        ack = "read_ack" if cmd == "read" else "write_ack"
-        key = (ack, norm_sid(sid))
+        key = (f"{cmd}_ack", norm_sid(sid))
         async with self._request_lock:
             for attempt in range(attempts):
                 fut = asyncio.get_running_loop().create_future()
@@ -123,6 +122,10 @@ class Gateway2:
                         raise
                 finally:
                     self._pending.pop(key, None)
+
+    async def device_ids(self) -> list[str]:
+        """Sub-devices in the gateway's own table, including stale ones that never answer."""
+        return await self._request("get_id_list", self.sid, {"cmd": "get_id_list"})
 
     async def read(self, sid: str) -> dict:
         # Sub-devices that left the gateway never answer; a single short try keeps them from hogging the queue.

@@ -104,8 +104,6 @@ class Hub:
         if new != old:
             self.states[device_id] = new
             self.broadcast({"type": "state", "id": device_id, "state": new})
-            if new.get("online") and not old.get("online"):
-                self._note_paired(device_id)
 
     # --- gateway 2 callbacks ---------------------------------------------
     def _gw_state(self, sid: str, model: str, state: dict) -> None:
@@ -150,31 +148,43 @@ class Hub:
         gw = next((r for r in self.records.values() if r["kind"] == "gateway"), None)
         if not gw or not gw.get("token"):
             raise RuntimeError("还没有网关 2 的密钥，请先在米家同步一次")
+        if not self.gateway:
+            raise RuntimeError("网关 2 未连接")
+        before = set(await self.gateway.device_ids())
         device = miio.Device(gw["ip"], gw["token"], timeout=3)
         await asyncio.to_thread(device.send, "start_zigbee_join", [seconds])
         self.pairing = {"until": time.time() + seconds, "found": []}
         if self._pairing_task:
             self._pairing_task.cancel()
-        self._pairing_task = asyncio.create_task(self._finish_pairing(seconds))
+        self._pairing_task = asyncio.create_task(self._watch_pairing(before))
         self.broadcast({"type": "pairing"})
         return self.pairing_status()
 
-    async def _finish_pairing(self, seconds: int) -> None:
-        await asyncio.sleep(seconds)
+    async def _watch_pairing(self, before: set[str]) -> None:
+        # A joined device appears in the gateway's table before it reports anything.
+        while time.time() < self.pairing["until"] + 30:
+            await asyncio.sleep(3)
+            try:
+                joined = set(await self.gateway.device_ids()) - before
+            except Exception as e:
+                log.debug("pairing poll failed: %s", e)
+                continue
+            for sid in joined - {d.removeprefix("lumi.") for d in self.pairing["found"]}:
+                log.info("device %s joined gateway 2", sid)
+                try:
+                    await self.gateway.read(sid)
+                except Exception as e:
+                    log.debug("first read of %s failed: %s", sid, e)
+                if f"lumi.{sid}" not in self.records:
+                    self._add_gw2_device(sid, self.gateway.models.get(sid, ""))
+                self.pairing["found"].append(f"lumi.{sid}")
+                self.broadcast({"type": "pairing"})
         self.broadcast({"type": "pairing"})
-        if self.cloud.logged_in:
+        if self.pairing["found"] and self.cloud.logged_in:
             try:
                 await self.sync_cloud()
             except Exception as e:
                 log.warning("cloud sync after pairing failed: %s", e)
-
-    def _note_paired(self, device_id: str) -> None:
-        # Joined devices show up once they report; allow a grace period for the first button press.
-        record = self.records.get(device_id)
-        if (record and record.get("driver") == "gw2" and time.time() < self.pairing["until"] + 600
-                and device_id not in self.pairing["found"]):
-            self.pairing["found"].append(device_id)
-            self.broadcast({"type": "pairing"})
 
     # --- Mi Home cloud sync -----------------------------------------------
     async def _cloud_loop(self) -> None:

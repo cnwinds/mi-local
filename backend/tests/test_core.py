@@ -1,3 +1,5 @@
+import asyncio
+
 from homehub.drivers.gateway2 import Gateway2, norm_sid, parse_state
 from homehub.rules import matches, resolve_toggles
 
@@ -29,6 +31,17 @@ def test_parse_gateway_states():
 
 def test_norm_sid():
     assert norm_sid("04cf8c000001") == norm_sid("4cf8c000001")
+
+
+def test_gateway_id_list_ack_resolves_pending_request():
+    async def scenario():
+        gw = Gateway2("192.168.1.120", "04cf8c000001", "k" * 16, "0.0.0.0", lambda *a: None, lambda *a: None)
+        fut = asyncio.get_running_loop().create_future()
+        gw._pending[("get_id_list_ack", norm_sid(gw.sid))] = fut
+        gw._handle({"cmd": "get_id_list_ack", "sid": "04cf8c000001", "data": '["158d0000000001"]'}, ("192.168.1.120", 9898))
+        return await fut
+
+    assert asyncio.run(scenario()) == ["158d0000000001"]
 
 
 def test_gateway_error_reply_does_not_mark_online():
