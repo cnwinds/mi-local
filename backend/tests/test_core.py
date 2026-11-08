@@ -68,3 +68,14 @@ def test_doorbell_rings_on_the_gateway_itself():
     asyncio.run(driver.command("ring"))
     asyncio.run(driver.command("stop"))
     assert gw.writes == [("4cf8c000001", {"mid": 11, "vol": 40}), ("4cf8c000001", {"mid": 10000})]
+
+
+def test_gateway_table_parses_device_list():
+    from homehub.hub import Hub
+
+    class FakeDevice:
+        def send(self, cmd, params):
+            return ["lumi.158d0000000003", 13, 1, 0, 1, "lumi.158d0003133f31", 56, 0, 0, 8, "lumi.0", 0, 0, 0, 0]
+
+    table = asyncio.run(Hub._gw_table(FakeDevice()))
+    assert table == {"158d0000000003": True, "158d0003133f31": False}

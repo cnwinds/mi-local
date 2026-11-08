@@ -159,27 +159,42 @@ class Hub:
             raise RuntimeError("还没有网关 2 的密钥，请先在米家同步一次")
         if not self.gateway:
             raise RuntimeError("网关 2 未连接")
-        before = set(await self.gateway.device_ids())
         device = miio.Device(gw["ip"], gw["token"], timeout=3)
+        before = await self._gw_table(device, attempts=3)
         await asyncio.to_thread(device.send, "start_zigbee_join", [seconds])
         self.pairing = {"until": time.time() + seconds, "found": []}
         if self._pairing_task:
             self._pairing_task.cancel()
-        self._pairing_task = asyncio.create_task(self._watch_pairing(before))
+        self._pairing_task = asyncio.create_task(self._watch_pairing(device, before))
         self.broadcast({"type": "pairing"})
         return self.pairing_status()
 
-    async def _watch_pairing(self, before: set[str]) -> None:
-        # A joined device appears in the gateway's table before it reports anything.
+    @staticmethod
+    async def _gw_table(device: "miio.Device", attempts: int = 1) -> dict[str, bool]:
+        """sid -> online, straight from the gateway's sub-device table."""
+        for attempt in range(attempts):
+            try:
+                flat = await asyncio.to_thread(device.send, "get_device_prop", ["lumi.0", "device_list"])
+                break
+            except Exception:
+                if attempt == attempts - 1:
+                    raise
+        rows = [flat[i:i + 5] for i in range(0, len(flat), 5)]
+        return {row[0].removeprefix("lumi."): bool(row[2]) for row in rows if row[0] != "lumi.0"}
+
+    async def _watch_pairing(self, device: "miio.Device", before: dict[str, bool]) -> None:
+        # A joined device shows up in the gateway's table before it reports anything. A device that
+        # re-pairs keeps its old entry, which only flips from offline to online.
         while time.time() < self.pairing["until"] + 30:
             await asyncio.sleep(3)
             try:
-                joined = set(await self.gateway.device_ids()) - before
+                table = await self._gw_table(device)
             except Exception as e:
                 log.debug("pairing poll failed: %s", e)
                 continue
+            joined = {sid for sid, online in table.items() if sid not in before or (online and not before[sid])}
             for sid in joined - {d.removeprefix("lumi.") for d in self.pairing["found"]}:
-                log.info("device %s joined gateway 2", sid)
+                log.info("device %s %s gateway 2", sid, "rejoined" if sid in before else "joined")
                 try:
                     await self.gateway.read(sid)
                 except Exception as e:
