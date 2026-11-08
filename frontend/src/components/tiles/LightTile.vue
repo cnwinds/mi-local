@@ -31,11 +31,14 @@ const el = ref<HTMLElement>()
 let startX = 0
 let startY = 0
 let startLevel = 0
+let pressed = false
 let dragging = false
 let longPressed = false
 let pressTimer: ReturnType<typeof setTimeout> | undefined
 
 function down(e: PointerEvent) {
+  if (e.button !== 0) return
+  pressed = true
   startX = e.clientX
   startY = e.clientY
   startLevel = brightness.value
@@ -50,6 +53,8 @@ function down(e: PointerEvent) {
 }
 
 function move(e: PointerEvent) {
+  // A mouse sends move events while just hovering; only a held button counts as a drag.
+  if (!pressed || (e.pointerType === 'mouse' && !(e.buttons & 1))) return
   const dx = e.clientX - startX
   const dy = e.clientY - startY
   if (!dragging && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) && online.value.length && !longPressed) {
@@ -66,6 +71,8 @@ function move(e: PointerEvent) {
 }
 
 function up() {
+  if (!pressed) return
+  pressed = false
   clearTimeout(pressTimer)
   if (dragging && preview.value !== null) {
     const value = preview.value
@@ -85,6 +92,7 @@ function up() {
 }
 
 function cancel() {
+  pressed = false
   clearTimeout(pressTimer)
   dragging = false
   preview.value = null
