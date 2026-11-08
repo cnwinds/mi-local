@@ -28,3 +28,7 @@ devices_file = JsonFile("devices.json", [])
 rules_file = JsonFile("rules.json", [])
 settings_file = JsonFile("settings.json", {"lan_ip": "0.0.0.0", "rooms": []})
 cloud_file = JsonFile("cloud.json", {})
+# room -> [{"id": device id, "size": "large" | "small" | "hidden"}], in display order
+panels_file = JsonFile("panels.json", {})
+# [{"id", "room", "name", "icon", "actions": [{"device", "action", "value"}]}]
+scenes_file = JsonFile("scenes.json", [])

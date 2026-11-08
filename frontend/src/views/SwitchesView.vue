@@ -8,7 +8,7 @@ import DeviceIcon from '../components/DeviceIcon.vue'
 import { fullName, miHomeLabel } from '../naming'
 
 const MORE_EVENTS: [string, string][] = [['double_click', '双击'], ['long_click_press', '长按']]
-const ACTION_NAMES: Record<string, string> = { toggle: '切换', turn_on: '打开', turn_off: '关闭', open: '打开', close: '关闭', stop: '暂停', ring: '响' }
+const ACTION_NAMES: Record<string, string> = { toggle: '切换', turn_on: '打开', turn_off: '关闭', open: '打开', close: '关闭', stop: '暂停', ring: '响', up: '升起', down: '降下' }
 
 const switches = computed(() => deviceList.value.filter((d) => d.kind === 'switch'))
 const roomIndex = (room: string) => (rooms.value.indexOf(room) + 1 || 999)

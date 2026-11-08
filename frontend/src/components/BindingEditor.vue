@@ -19,8 +19,11 @@ const ACTIONS: Record<string, [string, string][]> = {
   plug: [['toggle', '切换'], ['turn_on', '打开'], ['turn_off', '关闭']],
   curtain: [['open', '打开'], ['close', '关闭'], ['stop', '暂停']],
   doorbell: [['ring', '响铃']],
+  ac: [['toggle', '切换'], ['turn_on', '打开'], ['turn_off', '关闭']],
+  bath_heater: [['toggle', '切换'], ['turn_on', '开照明'], ['turn_off', '全关']],
+  airer: [['up', '升起'], ['down', '降下'], ['stop', '暂停']],
 }
-const DEFAULT_ACTION: Record<string, string> = { curtain: 'open', doorbell: 'ring' }
+const DEFAULT_ACTION: Record<string, string> = { curtain: 'open', doorbell: 'ring', airer: 'up' }
 const defaultAction = (d: Device) => DEFAULT_ACTION[d.kind] ?? 'toggle'
 
 const sw = computed(() => (props.switchId ? devices[props.switchId] : undefined))
@@ -39,7 +42,7 @@ watch(
 
 // The switch's own room first, then rooms of devices already picked, then the rest in Mi Home order.
 const groups = computed(() => {
-  const kinds = props.simple ? ['light', 'plug', 'doorbell'] : ['light', 'plug', 'curtain', 'doorbell']
+  const kinds = props.simple ? ['light', 'plug', 'doorbell'] : ['light', 'plug', 'curtain', 'ac', 'bath_heater', 'airer', 'doorbell']
   const candidates = deviceList.value.filter((d) => kinds.includes(d.kind) && !d.hidden)
   const first = new Set([sw.value?.room, ...Object.keys(picked.value).map((id) => devices[id]?.room)].filter(Boolean))
   const order = [...first, ...rooms.value.filter((r) => !first.has(r))]

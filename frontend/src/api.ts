@@ -1,4 +1,15 @@
-export type Kind = 'light' | 'plug' | 'curtain' | 'switch' | 'doorbell' | 'other' | 'gateway'
+export type Kind =
+  | 'light' | 'plug' | 'curtain' | 'switch' | 'doorbell' | 'ac' | 'bath_heater' | 'airer' | 'other' | 'gateway'
+
+export type AcMode = 'cool' | 'heat' | 'dry' | 'fan' | 'auto'
+
+export interface AcCaps {
+  modes: AcMode[]
+  temp_min: number
+  temp_max: number
+  temp_step: number
+  fan_levels: number
+}
 
 export interface DeviceState {
   online?: boolean
@@ -8,6 +19,34 @@ export interface DeviceState {
   position?: number
   battery?: number
   load_power?: number
+  // air conditioner
+  mode?: AcMode
+  target_temp?: number
+  temperature?: number
+  fan_level?: number
+  swing?: boolean
+  caps?: AcCaps
+  // bath heater / airer
+  light?: boolean
+  heating?: boolean
+  blow?: boolean
+  ventilation?: boolean
+  motor?: 'up' | 'down' | 'stop'
+}
+
+export type PanelSize = 'large' | 'small' | 'hidden'
+
+export interface PanelItem {
+  id: string
+  size: PanelSize
+}
+
+export interface Scene {
+  id?: string
+  room: string
+  name: string
+  icon: string
+  actions: RuleAction[]
 }
 
 export interface Device {
@@ -122,4 +161,12 @@ export const api = {
   pairing: () => request<PairingStatus>('GET', '/gateway/pairing'),
   startPairing: (seconds = 120) => request<PairingStatus>('POST', '/gateway/pairing', { seconds }),
   gatewayChildren: () => request<GatewayChild[]>('GET', '/gateway/children'),
+  panels: () => request<Record<string, PanelItem[]>>('GET', '/panels'),
+  setPanel: (room: string, layout: PanelItem[]) =>
+    request<PanelItem[]>('PUT', `/panels/${encodeURIComponent(room)}`, layout),
+  scenes: () => request<Scene[]>('GET', '/scenes'),
+  createScene: (scene: Scene) => request<Scene>('POST', '/scenes', scene),
+  updateScene: (id: string, scene: Scene) => request<Scene>('PUT', `/scenes/${id}`, scene),
+  deleteScene: (id: string) => request<unknown>('DELETE', `/scenes/${id}`),
+  runScene: (id: string) => request<unknown>('POST', `/scenes/${id}/run`),
 }

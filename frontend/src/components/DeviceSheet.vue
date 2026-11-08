@@ -83,7 +83,7 @@ function cmd(action: string, value?: unknown, optimistic?: Record<string, unknow
         </van-slider>
       </template>
 
-      <div v-if="!s.online" class="offline-tip">设备离线，无法通过局域网连接</div>
+      <div v-if="!s.online" class="offline-tip">设备离线，暂时连不上</div>
       <div v-else-if="device.kind === 'other'" class="offline-tip">该设备暂只支持查看在线状态</div>
     </div>
   </van-popup>

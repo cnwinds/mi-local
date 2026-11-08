@@ -1,6 +1,16 @@
 import { computed, reactive, ref } from 'vue'
 import { showFailToast } from 'vant'
-import { api, type CloudStatus, type Device, type DeviceState, type HubEvent, type PairingStatus, type Rule } from './api'
+import {
+  api,
+  type CloudStatus,
+  type Device,
+  type DeviceState,
+  type HubEvent,
+  type PairingStatus,
+  type PanelItem,
+  type Rule,
+  type Scene,
+} from './api'
 
 export const devices = reactive<Record<string, Device>>({})
 export const rooms = ref<string[]>([])
@@ -9,11 +19,11 @@ export const events = ref<HubEvent[]>([])
 export const connected = ref(false)
 export const cloud = ref<CloudStatus | null>(null)
 export const pairing = ref<PairingStatus | null>(null)
+export const panels = ref<Record<string, PanelItem[]>>({})
+export const scenes = ref<Scene[]>([])
 
 type EventListener = (e: HubEvent) => void
 const eventListeners = new Set<EventListener>()
-
-export const CONTROLLABLE = new Set(['light', 'plug', 'curtain', 'other'])
 
 export const deviceList = computed(() => Object.values(devices))
 
@@ -41,6 +51,14 @@ export async function loadCloud() {
 
 export async function loadPairing() {
   pairing.value = await api.pairing()
+}
+
+export async function loadPanels() {
+  panels.value = await api.panels()
+}
+
+export async function loadScenes() {
+  scenes.value = await api.scenes()
 }
 
 export async function loadEvents() {
@@ -71,6 +89,8 @@ export function connect() {
     connected.value = true
     loadDevices()
     loadCloud()
+    loadPanels()
+    loadScenes()
   }
   ws.onclose = () => {
     connected.value = false
@@ -86,6 +106,10 @@ export function connect() {
       loadCloud()
     } else if (data.type === 'pairing') {
       loadPairing()
+    } else if (data.type === 'panels') {
+      loadPanels()
+    } else if (data.type === 'scenes') {
+      loadScenes()
     } else if (data.type === 'event') {
       const e: HubEvent = { ts: data.ts, device: data.device, event: data.event }
       events.value = [e, ...events.value].slice(0, 200)

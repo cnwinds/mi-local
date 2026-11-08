@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .hub import Hub
+from .store import panels_file, scenes_file
 
 hub = Hub()
 STATIC_DIR = Path(__file__).resolve().parents[2] / "frontend" / "dist"
@@ -145,6 +146,77 @@ def delete_rule(rule_id: str):
 @app.post("/api/rules/{rule_id}/run")
 async def run_rule(rule_id: str):
     await hub.engine.run(hub.rules[_rule_index(rule_id)])
+    return {"ok": True}
+
+
+class PanelItem(BaseModel):
+    id: str
+    size: Literal["large", "small", "hidden"]
+
+
+class Scene(BaseModel):
+    room: str
+    name: str = Field(min_length=1, max_length=12)
+    icon: str = "⭐"
+    actions: list[Action]
+
+
+@app.get("/api/panels")
+def list_panels():
+    return hub.panels
+
+
+@app.put("/api/panels/{room}")
+def set_panel(room: str, layout: list[PanelItem]):
+    hub.panels[room] = [item.model_dump() for item in layout]
+    panels_file.save(hub.panels)
+    hub.broadcast({"type": "panels"})
+    return hub.panels[room]
+
+
+@app.get("/api/scenes")
+def list_scenes():
+    return hub.scenes
+
+
+def _scene_index(scene_id: str) -> int:
+    for i, scene in enumerate(hub.scenes):
+        if scene["id"] == scene_id:
+            return i
+    raise HTTPException(404, "scene not found")
+
+
+def _save_scenes() -> None:
+    scenes_file.save(hub.scenes)
+    hub.broadcast({"type": "scenes"})
+
+
+@app.post("/api/scenes")
+def create_scene(scene: Scene):
+    data = {"id": uuid.uuid4().hex[:8], **scene.model_dump()}
+    hub.scenes.append(data)
+    _save_scenes()
+    return data
+
+
+@app.put("/api/scenes/{scene_id}")
+def update_scene(scene_id: str, scene: Scene):
+    i = _scene_index(scene_id)
+    hub.scenes[i] = {"id": scene_id, **scene.model_dump()}
+    _save_scenes()
+    return hub.scenes[i]
+
+
+@app.delete("/api/scenes/{scene_id}")
+def delete_scene(scene_id: str):
+    hub.scenes.pop(_scene_index(scene_id))
+    _save_scenes()
+    return {"ok": True}
+
+
+@app.post("/api/scenes/{scene_id}/run")
+async def run_scene(scene_id: str):
+    await hub.engine.run(hub.scenes[_scene_index(scene_id)])
     return {"ok": True}
 
 

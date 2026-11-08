@@ -4,6 +4,9 @@ UNASSIGNED = "未分配"
 LIGHT_DRIVERS = {"yeelink.light.ceiling": "yeelight", "philips.light.downlight": "philips"}
 GW2_KINDS = {"lumi.sensor_switch.v2": "switch", "lumi.plug.v1": "plug", "lumi.curtain.v1": "curtain"}
 SKIP_MODELS = ("camera",)
+# These refuse LAN control or sit on a subnet the hub cannot reach; they go through the Mi Home cloud.
+CLOUD_KINDS = {"xiaomi.aircondition.ma2": "ac", "lumi.acpartner.v2": "ac", "viomi.bhf_light.v1": "bath_heater",
+               "mrbond.airer.m1pro": "airer"}
 SYNCED_FIELDS = ("name", "room", "model", "ip", "token")
 # Set in this app only; Mi Home cannot be written back to with our session.
 LOCAL_FIELDS = ("hidden", "local_name", "local_room", "name_auto")
@@ -18,6 +21,8 @@ def convert(dev: dict, gateway_ids: set[str], room: str) -> dict | None:
         sid = str(dev["did"]).removeprefix("lumi.")
         kind = GW2_KINDS[model]
         return {**base, "id": f"lumi.{sid}", "kind": kind, "driver": "gw2", "sid": sid, "gw_model": kind}
+    if model in CLOUD_KINDS:
+        return {**base, "kind": CLOUD_KINDS[model], "driver": "cloud"}
     ip, token = dev.get("localip") or "", dev.get("token")
     if not token or not ip.startswith("192.168.") or any(s in model for s in SKIP_MODELS):
         return None

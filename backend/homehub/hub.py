@@ -8,10 +8,11 @@ import miio
 
 from .catalog import merge, rooms_from_homes
 from .drivers.gateway2 import KIND_BY_MODEL, Gateway2, Gw2DeviceDriver, Gw2DoorbellDriver
+from .drivers.cloud import CLOUD_DRIVERS
 from .drivers.miio_wifi import DRIVERS
 from .micloud import MiCloud
 from .rules import RuleEngine
-from .store import cloud_file, devices_file, rules_file, settings_file
+from .store import cloud_file, devices_file, panels_file, rules_file, scenes_file, settings_file
 
 log = logging.getLogger(__name__)
 
@@ -27,6 +28,8 @@ class Hub:
         self.records: dict[str, dict] = {r["id"]: r for r in devices_file.load()}
         self.settings: dict = settings_file.load()
         self.rules: list[dict] = rules_file.load()
+        self.panels: dict[str, list[dict]] = panels_file.load()
+        self.scenes: list[dict] = scenes_file.load()
         self.states: dict[str, dict] = {i: {"online": False} for i in self.records}
         self.drivers: dict = {}
         self.events: deque = deque(maxlen=200)
@@ -70,6 +73,10 @@ class Hub:
                 return
             driver_cls = Gw2DoorbellDriver if driver_name == "gw2bell" else Gw2DeviceDriver
             driver = driver_cls(record, self.gateway)
+        elif driver_name == "cloud":
+            if record.get("model") not in CLOUD_DRIVERS:
+                return
+            driver = CLOUD_DRIVERS[record["model"]](record, self.cloud)
         elif driver_name in DRIVERS:
             driver = DRIVERS[driver_name](record)
         else:

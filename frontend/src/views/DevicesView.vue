@@ -19,7 +19,7 @@ const newRoom = ref('')
 
 onMounted(loadEvents)
 
-const GROUPS: [string, string][] = [['light', '灯'], ['switch', '无线开关'], ['curtain', '窗帘'], ['plug', '插座'], ['doorbell', '门铃'], ['other', '其他设备']]
+const GROUPS: [string, string][] = [['light', '灯'], ['switch', '无线开关'], ['curtain', '窗帘'], ['plug', '插座'], ['ac', '空调'], ['bath_heater', '浴霸'], ['airer', '晾衣架'], ['doorbell', '门铃'], ['other', '其他设备']]
 const grouped = computed(() =>
   GROUPS.map(([kind, label]) => ({ kind, label, items: deviceList.value.filter((d) => d.kind === kind) })).filter((g) => g.items.length),
 )

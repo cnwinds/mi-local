@@ -1,33 +1,43 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { showConfirmDialog } from 'vant'
-import type { Device } from '../api'
-import { CONTROLLABLE, connected, deviceList, rooms, sendCommand } from '../store'
-import DeviceCard from '../components/DeviceCard.vue'
-import DeviceSheet from '../components/DeviceSheet.vue'
+import { connected, deviceList, sendCommand } from '../store'
+import { AC_MODE_NAMES, isRunning, lightsOf, panelRooms, roomActive, roomDevices, roomSummary, toggleLights } from '../rooms'
+import { openRoom } from '../router'
 
-const activeRoom = ref('全部')
-const detailId = ref<string | null>(null)
-
-const visible = computed(() => deviceList.value.filter((d) => CONTROLLABLE.has(d.kind) && !d.hidden))
-const roomTabs = computed(() => ['全部', ...rooms.value.filter((r) => visible.value.some((d) => d.room === r))])
-
-const kindOrder: Record<string, number> = { light: 0, curtain: 1, plug: 2, other: 3 }
-const shown = computed(() =>
-  visible.value
-    .filter((d) => activeRoom.value === '全部' || d.room === activeRoom.value)
-    .sort((a, b) => kindOrder[a.kind] - kindOrder[b.kind] || Number(!!b.state.online) - Number(!!a.state.online)),
+// Room order follows Mi Home and never shifts when something turns on, so cards stay where the thumb expects them.
+const cards = computed(() =>
+  panelRooms.value.map((room) => {
+    const list = roomDevices(room)
+    const lights = lightsOf(list)
+    return {
+      room,
+      summary: roomSummary(room),
+      active: roomActive(room),
+      hasLights: list.some((d) => d.kind === 'light'),
+      lightsOn: lights.some((d) => d.state.power),
+      lightsOnline: lights.length > 0,
+      list,
+    }
+  }),
 )
 
-const lightsOn = computed(() => visible.value.filter((d) => d.kind === 'light' && d.state.online && d.state.power))
+const lightsOn = computed(() => deviceList.value.filter((d) => d.kind === 'light' && !d.hidden && isRunning(d)))
+const acsOn = computed(() => deviceList.value.filter((d) => d.kind === 'ac' && !d.hidden && isRunning(d)))
+const headline = computed(() => {
+  const parts = [lightsOn.value.length ? `${lightsOn.value.length} 盏灯亮着` : '灯都关着']
+  for (const ac of acsOn.value) parts.push(`${ac.room}空调${AC_MODE_NAMES[ac.state.mode ?? 'auto']} ${ac.state.target_temp}°`)
+  return parts.join(' · ')
+})
 
-async function allOff() {
+async function allLightsOff() {
   await showConfirmDialog({ title: '关闭全部灯', message: `将关闭 ${lightsOn.value.length} 盏灯` })
   lightsOn.value.forEach((d) => sendCommand(d.id, 'turn_off', undefined, { power: false }))
 }
 
-function openDetail(d: Device) {
-  detailId.value = d.id
+async function allAcOff() {
+  await showConfirmDialog({ title: '关闭全部空调', message: acsOn.value.map((d) => d.name).join('、') })
+  acsOn.value.forEach((d) => sendCommand(d.id, 'turn_off', undefined, { power: false }))
 }
 </script>
 
@@ -35,28 +45,35 @@ function openDetail(d: Device) {
   <div class="home">
     <header class="hero">
       <div class="title">我的家 <span v-if="!connected" class="disconnected">连接中…</span></div>
-      <div class="summary">
-        <span>{{ lightsOn.length ? `${lightsOn.length} 盏灯亮着` : '灯都关着' }}</span>
-        <van-button v-if="lightsOn.length" size="small" round plain type="primary" @click="allOff">全部关灯</van-button>
+      <div class="headline">{{ headline }}</div>
+      <div class="hero-actions" v-if="lightsOn.length || acsOn.length">
+        <van-button v-if="lightsOn.length" size="small" round plain type="primary" icon="bulb-o" @click="allLightsOff">全部关灯</van-button>
+        <van-button v-if="acsOn.length" size="small" round plain type="primary" @click="allAcOff">关闭空调</van-button>
       </div>
     </header>
 
-    <van-tabs v-model:active="activeRoom" shrink sticky background="#f6f7f9" line-width="16px" color="#3e7bfa">
-      <van-tab v-for="room in roomTabs" :key="room" :title="room" :name="room" />
-    </van-tabs>
-
-    <div class="grid">
-      <DeviceCard v-for="d in shown" :key="d.id" :device="d" @detail="openDetail" />
+    <div class="rooms">
+      <div v-for="c in cards" :key="c.room" class="room-card" :class="{ active: c.active }" @click="openRoom(c.room)">
+        <div class="room-name">{{ c.room }}</div>
+        <div class="room-summary">{{ c.summary.join(' · ') || `${c.list.length} 个设备` }}</div>
+        <button
+          v-if="c.hasLights"
+          class="light-button"
+          :class="{ on: c.lightsOn, disabled: !c.lightsOnline }"
+          @click.stop="c.lightsOnline && toggleLights(c.list)"
+        >
+          <van-icon name="bulb-o" />
+        </button>
+        <van-icon name="arrow" class="go" />
+      </div>
     </div>
-    <van-empty v-if="!shown.length" description="这个房间还没有设备" />
-
-    <DeviceSheet :device-id="detailId" @close="detailId = null" />
+    <van-empty v-if="!cards.length" description="还没有设备，去「设备」页同步米家" />
   </div>
 </template>
 
 <style scoped>
 .hero {
-  padding: calc(20px + env(safe-area-inset-top)) 20px 8px;
+  padding: calc(20px + env(safe-area-inset-top)) 20px 4px;
 }
 .title {
   font-size: 26px;
@@ -69,19 +86,86 @@ function openDetail(d: Device) {
   color: #ee0a24;
   margin-left: 8px;
 }
-.summary {
+.headline {
   margin-top: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   color: #646a73;
   font-size: 14px;
-  min-height: 32px;
 }
-.grid {
+.hero-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.rooms {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
-  padding: 12px 16px;
+  padding: 16px;
+}
+@media (min-width: 700px) {
+  .rooms {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.room-card {
+  position: relative;
+  background: #fff;
+  border-radius: 18px;
+  padding: 14px 14px 56px;
+  min-height: 84px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.1s, background 0.3s;
+}
+.room-card:active {
+  transform: scale(0.98);
+}
+.room-card.active {
+  background: linear-gradient(150deg, #fff6df, #fff 75%);
+}
+.room-name {
+  font-size: 17px;
+  font-weight: 600;
+  color: #1f2329;
+}
+.room-summary {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #8f959e;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.light-button {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  width: 38px;
+  height: 38px;
+  border: none;
+  border-radius: 50%;
+  background: #f0f1f4;
+  color: #9aa0ab;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+.light-button.on {
+  background: #f5a623;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(245, 166, 35, 0.4);
+}
+.light-button.disabled {
+  opacity: 0.4;
+}
+.go {
+  position: absolute;
+  right: 14px;
+  bottom: 22px;
+  color: #c4c7cc;
 }
 </style>
