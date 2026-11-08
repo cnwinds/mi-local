@@ -261,7 +261,15 @@ class Hub:
     # --- views & persistence ---------------------------------------------
     def public_device(self, device_id: str) -> dict:
         record = self.records[device_id]
-        return {**{k: record.get(k) for k in PUBLIC_FIELDS}, "state": self.states.get(device_id, {})}
+        return {
+            **{k: record.get(k) for k in PUBLIC_FIELDS},
+            "name": record.get("local_name") or record["name"],
+            "room": record.get("local_room") or record["room"],
+            "cloud_name": record["name"],
+            "cloud_room": record["room"],
+            "name_auto": bool(record.get("name_auto")),
+            "state": self.states.get(device_id, {}),
+        }
 
     def save_devices(self) -> None:
         devices_file.save(list(self.records.values()))

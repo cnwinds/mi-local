@@ -41,8 +41,20 @@ function addRoom() {
 }
 
 async function save() {
-  if (!editing.value) return
-  await api.patchDevice(editing.value.id, synced.value ? { hidden: form.value.hidden } : form.value)
+  const d = editing.value
+  if (!d) return
+  const name = form.value.name.trim()
+  await api.patchDevice(
+    d.id,
+    synced.value
+      ? {
+          hidden: form.value.hidden,
+          local_name: name && name !== d.cloud_name ? name : '',
+          local_room: form.value.room !== d.cloud_room ? form.value.room : '',
+          name_auto: name === d.name ? d.name_auto : false,
+        }
+      : { ...form.value, name },
+  )
   await loadDevices()
   editing.value = null
   showToast('已保存')
@@ -84,20 +96,16 @@ const timeFmt = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-d
       <div class="edit" v-if="editing">
         <div class="edit-title">设备设置</div>
         <van-cell-group inset>
-          <template v-if="synced">
-            <van-cell title="名称" :value="form.name" />
-            <van-cell title="房间" :value="form.room" />
-          </template>
-          <template v-else>
-            <van-field v-model="form.name" label="名称" />
-            <van-cell title="房间" :value="form.room" is-link @click="showRoomPicker = true" />
-          </template>
+          <van-field v-model="form.name" label="名称" :placeholder="editing.cloud_name" clearable />
+          <van-cell title="房间" :value="form.room" is-link @click="showRoomPicker = true" />
           <van-cell title="在首页隐藏">
             <template #right-icon><van-switch v-model="form.hidden" size="22px" /></template>
           </van-cell>
           <van-cell title="型号" :value="editing.model" />
         </van-cell-group>
-        <div class="sync-tip" v-if="synced">名称和房间与米家同步，请在米家 App 中修改</div>
+        <div class="sync-tip" v-if="synced">
+          米家里叫「{{ editing.cloud_name }}」，在「{{ editing.cloud_room }}」。这里修改只在本应用显示，名称清空则恢复米家的名字。
+        </div>
         <div class="edit-actions"><van-button block round type="primary" @click="save">保存</van-button></div>
       </div>
     </van-popup>

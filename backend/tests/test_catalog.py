@@ -31,6 +31,15 @@ def test_gateway_keeps_lan_key_and_switch_maps_to_gateway2():
     assert set(summary["added"]) == {"网关2", "餐厅开关"}
 
 
+def test_local_name_and_room_survive_sync():
+    existing = {"lumi.158d0000000001": {"id": "lumi.158d0000000001", "name": "小米无线开关", "room": "客厅走道",
+                                        "local_name": "餐厅灯开关", "local_room": "餐厅", "name_auto": True,
+                                        "kind": "switch", "driver": "gw2", "sid": "158d0000000001"}}
+    records, _ = merge([GW, SWITCH], {}, existing, "100000001", "KEY")
+    sw = next(r for r in records if r["id"] == "lumi.158d0000000001")
+    assert (sw["name"], sw["local_name"], sw["local_room"], sw["name_auto"]) == ("餐厅开关", "餐厅灯开关", "餐厅", True)
+
+
 def test_local_only_devices_are_kept():
     local = {"lumi.abc": {"id": "lumi.abc", "name": "本地发现", "kind": "switch"}}
     records, _ = merge([GW], {}, local, "100000001", "KEY")

@@ -2,9 +2,11 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { showFailToast } from 'vant'
 import { api } from '../api'
-import { devices, loadPairing, pairing } from '../store'
+import { devices, loadPairing, loadRules, pairing } from '../store'
+import BindingEditor from './BindingEditor.vue'
 
 const show = ref(false)
+const configure = ref<string | null>(null)
 const starting = ref(false)
 const remaining = ref(0)
 let timer: number | undefined
@@ -16,6 +18,7 @@ watch(pairing, (p) => (remaining.value = p?.remaining ?? 0), { immediate: true }
 
 onMounted(() => {
   loadPairing()
+  loadRules()
   timer = window.setInterval(() => remaining.value > 0 && remaining.value--, 1000)
 })
 onUnmounted(() => clearInterval(timer))
@@ -50,7 +53,7 @@ async function start() {
           <li>点下面的「开始配对」，网关 2 会进入配对模式 2 分钟。</li>
           <li>用卡针长按设备上的配对孔约 5 秒，指示灯闪烁后松开。</li>
           <li>配对成功后<b>按一下开关</b>，它就会出现在下面的列表里。</li>
-          <li>到米家 App 里给它改名、选房间，本页会自动同步过来。</li>
+          <li>点「设置控制的灯」选好要控制的灯，开关会按灯自动命名。</li>
         </ol>
 
         <div class="status" v-if="active">
@@ -59,7 +62,11 @@ async function start() {
         </div>
 
         <van-cell-group inset v-if="found.length" title="本次已配对">
-          <van-cell v-for="d in found" :key="d.id" :title="d.name" :label="d.room" icon="checked" />
+          <van-cell v-for="d in found" :key="d.id" :title="d.name" :label="d.room" icon="checked" center>
+            <template #value>
+              <van-button v-if="d.kind === 'switch'" size="small" round type="primary" @click="configure = d.id">设置控制的灯</van-button>
+            </template>
+          </van-cell>
         </van-cell-group>
 
         <div class="actions">
@@ -69,6 +76,8 @@ async function start() {
         </div>
       </div>
     </van-popup>
+
+    <BindingEditor :switch-id="configure" event="click" @close="configure = null" />
   </div>
 </template>
 

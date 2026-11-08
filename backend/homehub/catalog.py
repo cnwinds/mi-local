@@ -5,6 +5,8 @@ LIGHT_DRIVERS = {"yeelink.light.ceiling": "yeelight", "philips.light.downlight":
 GW2_KINDS = {"lumi.sensor_switch.v2": "switch", "lumi.plug.v1": "plug", "lumi.curtain.v1": "curtain"}
 SKIP_MODELS = ("camera",)
 SYNCED_FIELDS = ("name", "room", "model", "ip", "token")
+# Set in this app only; Mi Home cannot be written back to with our session.
+LOCAL_FIELDS = ("hidden", "local_name", "local_room", "name_auto")
 
 
 def convert(dev: dict, gateway_ids: set[str], room: str) -> dict | None:
@@ -38,7 +40,7 @@ def gateway_record(dev: dict, room: str, lan_key: str, ip: str | None = None) ->
 
 def merge(cloud_devices: list[dict], room_of: dict[str, str], existing: dict[str, dict],
           gateway_id: str, lan_key: str) -> tuple[list[dict], dict]:
-    """Return (records, summary). Cloud wins for SYNCED_FIELDS; local 'hidden' is kept;
+    """Return (records, summary). Cloud wins for SYNCED_FIELDS; LOCAL_FIELDS are kept;
     local devices missing from the cloud are kept unchanged."""
     gateway_ids = {str(d["did"]) for d in cloud_devices if d.get("model", "").startswith("lumi.gateway")}
     records: dict[str, dict] = {}
@@ -57,7 +59,7 @@ def merge(cloud_devices: list[dict], room_of: dict[str, str], existing: dict[str
         if not old:
             summary["added"].append(record["name"])
             continue
-        record["hidden"] = old.get("hidden", record["hidden"])
+        record.update({f: old[f] for f in LOCAL_FIELDS if f in old})
         if old.get("name") != record["name"]:
             summary["renamed"].append(f"{old.get('name')} → {record['name']}")
         if old.get("room") != record["room"]:

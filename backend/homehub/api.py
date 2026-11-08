@@ -29,6 +29,9 @@ class DevicePatch(BaseModel):
     name: str | None = None
     room: str | None = None
     hidden: bool | None = None
+    local_name: str | None = None
+    local_room: str | None = None
+    name_auto: bool | None = None
 
 
 class Command(BaseModel):
@@ -69,7 +72,7 @@ def list_devices():
 @app.patch("/api/devices/{device_id}")
 def patch_device(device_id: str, patch: DevicePatch):
     record = _device_or_404(device_id)
-    record.update(patch.model_dump(exclude_none=True))
+    record.update(patch.model_dump(exclude_unset=True))
     hub.save_devices()
     hub.broadcast({"type": "devices"})
     return hub.public_device(device_id)
@@ -91,8 +94,9 @@ async def device_command(device_id: str, cmd: Command):
 def list_rooms():
     rooms = list(hub.settings.get("rooms", []))
     for record in hub.records.values():
-        if record.get("room") and record["room"] not in rooms:
-            rooms.append(record["room"])
+        room = record.get("local_room") or record.get("room")
+        if room and room not in rooms:
+            rooms.append(room)
     return rooms
 
 

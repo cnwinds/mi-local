@@ -17,7 +17,19 @@ export interface Device {
   kind: Kind
   model: string
   hidden: boolean
+  cloud_name: string
+  cloud_room: string
+  name_auto: boolean
   state: DeviceState
+}
+
+export interface DevicePatch {
+  name?: string
+  room?: string
+  hidden?: boolean
+  local_name?: string
+  local_room?: string
+  name_auto?: boolean
 }
 
 export interface RuleAction {
@@ -85,7 +97,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
 export const api = {
   devices: () => request<Device[]>('GET', '/devices'),
-  patchDevice: (id: string, patch: Partial<Pick<Device, 'name' | 'room' | 'hidden'>>) =>
+  patchDevice: (id: string, patch: DevicePatch) =>
     request<Device>('PATCH', `/devices/${encodeURIComponent(id)}`, patch),
   command: (id: string, action: string, value?: unknown) =>
     request<DeviceState>('POST', `/devices/${encodeURIComponent(id)}/command`, { action, value }),
