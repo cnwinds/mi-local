@@ -6,8 +6,10 @@ export function fullName(d: Device) {
 }
 
 /** Name a wireless switch after what its single click controls, plus the room it belongs in. */
-export function suggestSwitchName(targets: Device[]): { name: string; room: string } | null {
-  if (!targets.length) return null
+export function suggestSwitchName(all: Device[]): { name: string; room: string } | null {
+  // The doorbell lives wherever the gateway is, so it never decides the switch's room.
+  const targets = all.filter((d) => d.kind !== 'doorbell')
+  if (!targets.length) return all.length ? { name: '门铃开关', room: '' } : null
   const rooms = [...new Set(targets.map((d) => d.room))]
   const room = rooms.length === 1 ? rooms[0] : ''
   let label: string

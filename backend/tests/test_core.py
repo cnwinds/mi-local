@@ -51,3 +51,20 @@ def test_gateway_error_reply_does_not_mark_online():
     assert seen == []
     gw._handle({"cmd": "read_ack", "model": "switch", "sid": "158d0000000001", "data": '{"voltage":3000}'}, ("192.168.1.120", 9898))
     assert seen == [("158d0000000001", "switch", {"online": True, "battery": 50})]
+
+
+def test_doorbell_rings_on_the_gateway_itself():
+    from homehub.drivers.gateway2 import Gw2DoorbellDriver
+
+    class FakeGateway:
+        sid = "4cf8c000001"
+        writes = []
+
+        async def write(self, sid, params):
+            self.writes.append((sid, params))
+
+    gw = FakeGateway()
+    driver = Gw2DoorbellDriver({"tone": 11, "volume": 40}, gw)
+    asyncio.run(driver.command("ring"))
+    asyncio.run(driver.command("stop"))
+    assert gw.writes == [("4cf8c000001", {"mid": 11, "vol": 40}), ("4cf8c000001", {"mid": 10000})]

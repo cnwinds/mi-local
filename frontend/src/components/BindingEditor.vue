@@ -18,8 +18,10 @@ const ACTIONS: Record<string, [string, string][]> = {
   light: [['toggle', '切换'], ['turn_on', '打开'], ['turn_off', '关闭']],
   plug: [['toggle', '切换'], ['turn_on', '打开'], ['turn_off', '关闭']],
   curtain: [['open', '打开'], ['close', '关闭'], ['stop', '暂停']],
+  doorbell: [['ring', '响铃']],
 }
-const defaultAction = (d: Device) => (d.kind === 'curtain' ? 'open' : 'toggle')
+const DEFAULT_ACTION: Record<string, string> = { curtain: 'open', doorbell: 'ring' }
+const defaultAction = (d: Device) => DEFAULT_ACTION[d.kind] ?? 'toggle'
 
 const sw = computed(() => (props.switchId ? devices[props.switchId] : undefined))
 const existing = computed<Rule | undefined>(() =>
@@ -37,7 +39,7 @@ watch(
 
 // The switch's own room first, then rooms of devices already picked, then the rest in Mi Home order.
 const groups = computed(() => {
-  const kinds = props.simple ? ['light', 'plug'] : ['light', 'plug', 'curtain']
+  const kinds = props.simple ? ['light', 'plug', 'doorbell'] : ['light', 'plug', 'curtain', 'doorbell']
   const candidates = deviceList.value.filter((d) => kinds.includes(d.kind) && !d.hidden)
   const first = new Set([sw.value?.room, ...Object.keys(picked.value).map((id) => devices[id]?.room)].filter(Boolean))
   const order = [...first, ...rooms.value.filter((r) => !first.has(r))]
@@ -109,7 +111,8 @@ async function save() {
               <van-checkbox :model-value="!!picked[d.id]" class="check" @click.stop="toggle(d)" />
             </template>
             <template #value>
-              <select v-if="picked[d.id] && !simple" v-model="picked[d.id]" class="action-select" @click.stop>
+              <span v-if="d.kind === 'doorbell'" class="try" @click.stop="api.command(d.id, 'ring')">试听</span>
+              <select v-else-if="picked[d.id] && !simple" v-model="picked[d.id]" class="action-select" @click.stop>
                 <option v-for="[value, label] in ACTIONS[d.kind] ?? []" :key="value" :value="value">{{ label }}</option>
               </select>
               <span v-else-if="!d.state.online" class="offline">离线</span>
@@ -176,6 +179,10 @@ async function save() {
   border-radius: 8px;
   padding: 4px 8px;
   font-size: 14px;
+}
+.try {
+  font-size: 13px;
+  color: #3e7bfa;
 }
 .offline {
   font-size: 12px;

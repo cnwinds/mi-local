@@ -1,4 +1,4 @@
-export type Kind = 'light' | 'plug' | 'curtain' | 'switch' | 'other' | 'gateway'
+export type Kind = 'light' | 'plug' | 'curtain' | 'switch' | 'doorbell' | 'other' | 'gateway'
 
 export interface DeviceState {
   online?: boolean

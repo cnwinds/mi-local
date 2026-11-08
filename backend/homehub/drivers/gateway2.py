@@ -134,9 +134,10 @@ class Gateway2:
     async def write(self, sid: str, params: dict) -> dict:
         await asyncio.wait_for(self._token_ready.wait(), 15)
         key = AES.new(self.lan_key.encode(), AES.MODE_CBC, IV).encrypt(self._token.encode()).hex()
+        is_gateway = norm_sid(sid) == self.sid
         payload = {
             "cmd": "write",
-            "model": self.models.get(norm_sid(sid), ""),
+            "model": "gateway" if is_gateway else self.models.get(norm_sid(sid), ""),
             "sid": sid,
             "short_id": self.short_ids.get(norm_sid(sid), 0),
             "data": json.dumps({**params, "key": key}),
@@ -182,3 +183,29 @@ class Gw2DeviceDriver:
                 await self.gateway.write(self.sid, {"curtain_level": str(int(value))})
                 return
         raise ValueError(f"unsupported action {action} for {self.kind}")
+
+
+class Gw2DoorbellDriver:
+    """The gateway's own speaker. Ringtone ids (mid): 10-13 are doorbell chimes, 10000 stops playback."""
+
+    kind = "doorbell"
+    poll_interval = 300.0
+    offline_retry = 60.0
+
+    def __init__(self, record: dict, gateway: Gateway2):
+        self.record = record
+        self.gateway = gateway
+
+    async def poll(self) -> dict:
+        await self.gateway.device_ids()
+        return {}
+
+    async def command(self, action: str, value=None) -> None:
+        if action == "ring":
+            mid = int(self.record.get("tone", 10))
+            vol = int(value if value is not None else self.record.get("volume", 50))
+            await self.gateway.write(self.gateway.sid, {"mid": mid, "vol": vol})
+        elif action == "stop":
+            await self.gateway.write(self.gateway.sid, {"mid": 10000})
+        else:
+            raise ValueError(f"unsupported action {action} for doorbell")

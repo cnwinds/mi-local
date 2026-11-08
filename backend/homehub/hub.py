@@ -7,7 +7,7 @@ from collections import deque
 import miio
 
 from .catalog import merge, rooms_from_homes
-from .drivers.gateway2 import KIND_BY_MODEL, Gateway2, Gw2DeviceDriver
+from .drivers.gateway2 import KIND_BY_MODEL, Gateway2, Gw2DeviceDriver, Gw2DoorbellDriver
 from .drivers.miio_wifi import DRIVERS
 from .micloud import MiCloud
 from .rules import RuleEngine
@@ -19,6 +19,7 @@ GW2_NAMES = {"switch": "无线开关", "plug": "插座", "curtain": "窗帘"}
 PUBLIC_FIELDS = ("id", "name", "room", "kind", "model", "hidden")
 DRIVER_FIELDS = ("driver", "ip", "token", "sid")
 CLOUD_SYNC_INTERVAL = 30 * 60
+DOORBELL_ID = "gw2.doorbell"
 
 
 class Hub:
@@ -46,6 +47,13 @@ class Hub:
         if gw:
             self.gateway = Gateway2(gw["ip"], gw["sid"], gw["lan_key"], lan_ip, self._gw_state, self._gw_event)
             await self.gateway.start()
+            if DOORBELL_ID not in self.records:
+                self.records[DOORBELL_ID] = {
+                    "id": DOORBELL_ID, "name": "门铃", "room": gw["room"], "kind": "doorbell",
+                    "model": gw["model"], "driver": "gw2bell", "hidden": False, "tone": 10, "volume": 50,
+                }
+                self.states[DOORBELL_ID] = {"online": False}
+                self.save_devices()
         for record in self.records.values():
             self._attach(record)
         self._tasks.append(asyncio.create_task(self._cloud_loop()))
@@ -57,10 +65,11 @@ class Hub:
     # --- drivers & polling ---------------------------------------------
     def _attach(self, record: dict) -> None:
         driver_name = record.get("driver")
-        if driver_name == "gw2":
+        if driver_name in ("gw2", "gw2bell"):
             if not self.gateway:
                 return
-            driver = Gw2DeviceDriver(record, self.gateway)
+            driver_cls = Gw2DoorbellDriver if driver_name == "gw2bell" else Gw2DeviceDriver
+            driver = driver_cls(record, self.gateway)
         elif driver_name in DRIVERS:
             driver = DRIVERS[driver_name](record)
         else:
