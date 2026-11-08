@@ -134,7 +134,7 @@ export interface GatewayCandidate {
 export interface GatewayStatus {
   configured: boolean
   connected: boolean
-  last_seen: number | null
+  last_seen_ago: number | null
   children: number
   children_online: number
   candidates: GatewayCandidate[]

@@ -123,7 +123,8 @@ class Hub:
         status = {
             "configured": gw is not None,
             "connected": bool(self.gateway and self.gateway.connected),
-            "last_seen": (self.gateway.last_seen or None) if self.gateway else None,
+            # Seconds ago rather than a timestamp, so a phone with a wrong clock still reads it right.
+            "last_seen_ago": round(time.time() - self.gateway.last_seen) if self.gateway and self.gateway.last_seen else None,
             "children": len(children),
             "children_online": sum(1 for r in children if self.states.get(r["id"], {}).get("online")),
             "candidates": [

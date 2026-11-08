@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onUnmounted, watch } from 'vue'
 import { Plus, Router, Settings2 } from 'lucide-vue-next'
 import type { Device } from '../../api'
-import { gateway } from '../../store'
+import { gateway, loadGateway } from '../../store'
 import GatewayChildren from './GatewayChildren.vue'
 
 const props = defineProps<{ show: boolean }>()
@@ -10,10 +10,20 @@ const emit = defineEmits<{ close: []; settings: []; pair: []; edit: [device: Dev
 const visible = computed({ get: () => props.show, set: (v) => !v && emit('close') })
 
 const g = computed(() => gateway.value)
+let timer: number | undefined
+watch(
+  () => props.show,
+  (show) => {
+    clearInterval(timer)
+    if (!show) return
+    loadGateway()
+    timer = window.setInterval(loadGateway, 5000)
+  },
+)
+onUnmounted(() => clearInterval(timer))
 const lastSeen = computed(() => {
-  const ts = g.value?.last_seen
-  if (!ts) return '还没收到过网关的消息'
-  const s = Math.max(0, Math.round(Date.now() / 1000 - ts))
+  const s = g.value?.last_seen_ago
+  if (s == null) return '还没收到过网关的消息'
   return s < 60 ? `${s} 秒前` : s < 3600 ? `${Math.round(s / 60)} 分钟前` : `${Math.round(s / 3600)} 小时前`
 })
 const rows = computed(() => {
