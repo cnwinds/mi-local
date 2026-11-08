@@ -8,6 +8,7 @@ import json
 import logging
 import socket
 import struct
+import time
 from typing import Callable
 
 from Crypto.Cipher import AES
@@ -68,7 +69,9 @@ class Gateway2:
         self._token_ready = asyncio.Event()
         self._pending: dict[tuple[str, str], asyncio.Future] = {}
         self._transport = None
+        self._mcast_transport = None
         self._request_lock: asyncio.Lock | None = None
+        self.last_seen = 0.0
 
     async def start(self) -> None:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
@@ -79,13 +82,28 @@ class Gateway2:
         sock.setblocking(False)
         self._request_lock = asyncio.Lock()
         loop = asyncio.get_running_loop()
-        await loop.create_datagram_endpoint(lambda: _Protocol(self._handle), sock=sock)
+        self._mcast_transport, _ = await loop.create_datagram_endpoint(lambda: _Protocol(self._handle), sock=sock)
         self._transport, _ = await loop.create_datagram_endpoint(
             lambda: _Protocol(self._handle), local_addr=("0.0.0.0", 0))
+
+    def stop(self) -> None:
+        for transport in (self._mcast_transport, self._transport):
+            if transport:
+                transport.close()
+        for fut in self._pending.values():
+            if not fut.done():
+                fut.cancel()
+        self._pending.clear()
+
+    @property
+    def connected(self) -> bool:
+        # The gateway multicasts a heartbeat every 10 s.
+        return time.time() - self.last_seen < 35
 
     def _handle(self, msg: dict, addr) -> None:
         if addr[0] != self.ip:
             return
+        self.last_seen = time.time()
         cmd = msg.get("cmd", "")
         sid = norm_sid(msg.get("sid", ""))
         data = json.loads(msg.get("data") or "{}")
@@ -132,6 +150,8 @@ class Gateway2:
         return await self._request("read", sid, {"cmd": "read", "sid": sid}, timeout=2.0, attempts=1)
 
     async def write(self, sid: str, params: dict) -> dict:
+        if not self.lan_key:
+            raise RuntimeError("还没有设置网关的局域网密钥")
         await asyncio.wait_for(self._token_ready.wait(), 15)
         key = AES.new(self.lan_key.encode(), AES.MODE_CBC, IV).encrypt(self._token.encode()).hex()
         is_gateway = norm_sid(sid) == self.sid

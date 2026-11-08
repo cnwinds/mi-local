@@ -5,6 +5,7 @@ import {
   type CloudStatus,
   type Device,
   type DeviceState,
+  type GatewayStatus,
   type HubEvent,
   type PairingStatus,
   type PanelItem,
@@ -19,6 +20,8 @@ export const events = ref<HubEvent[]>([])
 export const connected = ref(false)
 export const cloud = ref<CloudStatus | null>(null)
 export const pairing = ref<PairingStatus | null>(null)
+export const gateway = ref<GatewayStatus | null>(null)
+export const gatewayName = computed(() => gateway.value?.name || '网关')
 export const panels = ref<Record<string, PanelItem[]>>({})
 export const scenes = ref<Scene[]>([])
 
@@ -51,6 +54,10 @@ export async function loadCloud() {
 
 export async function loadPairing() {
   pairing.value = await api.pairing()
+}
+
+export async function loadGateway() {
+  gateway.value = await api.gateway()
 }
 
 export async function loadPanels() {
@@ -89,6 +96,7 @@ export function connect() {
     connected.value = true
     loadDevices()
     loadCloud()
+    loadGateway()
     loadPanels()
     loadScenes()
   }
@@ -104,6 +112,8 @@ export function connect() {
       loadDevices()
     } else if (data.type === 'cloud') {
       loadCloud()
+    } else if (data.type === 'gateway') {
+      loadGateway()
     } else if (data.type === 'pairing') {
       loadPairing()
     } else if (data.type === 'panels') {

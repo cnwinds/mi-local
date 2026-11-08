@@ -1,12 +1,14 @@
 import asyncio
+import ipaddress
 import logging
 import os
+import re
 import time
 from collections import deque
 
 import miio
 
-from .catalog import merge, rooms_from_homes
+from .catalog import LOCAL_FIELDS, UNASSIGNED, gateway_record, merge, rooms_from_homes
 from .drivers.gateway2 import KIND_BY_MODEL, Gateway2, Gw2DeviceDriver, Gw2DoorbellDriver
 from .drivers.cloud import CLOUD_DRIVERS
 from .drivers.miio_wifi import DRIVERS
@@ -21,6 +23,13 @@ PUBLIC_FIELDS = ("id", "name", "room", "kind", "model", "hidden")
 DRIVER_FIELDS = ("driver", "ip", "token", "sid")
 CLOUD_SYNC_INTERVAL = 30 * 60
 DOORBELL_ID = "gw2.doorbell"
+GW_DRIVERS = ("gw2", "gw2bell")
+# Gateways that speak the LAN protocol on UDP 9898 once it is enabled in Mi Home.
+SUPPORTED_GATEWAYS = {"lumi.gateway.v2", "lumi.gateway.v3", "lumi.gateway.mieu01"}
+
+
+def gateway_ip(gw: dict) -> str | None:
+    return gw.get("ip_override") or gw.get("ip")
 
 
 class Hub:
@@ -43,32 +52,138 @@ class Hub:
         self._sync_lock = asyncio.Lock()
         self.pairing: dict = {"until": 0.0, "found": []}
         self._pairing_task: asyncio.Task | None = None
+        self.lan_ip = "0.0.0.0"
+        # Gateways in the Mi Home account as of the last sync, so the user can pick one.
+        self.cloud_gateways: dict[str, dict] = {}
 
     async def start(self) -> None:
-        lan_ip = os.environ.get("HUB_LAN_IP") or self.settings.get("lan_ip", "0.0.0.0")
-        gw = next((r for r in self.records.values() if r["kind"] == "gateway"), None)
-        if gw:
-            self.gateway = Gateway2(gw["ip"], gw["sid"], gw["lan_key"], lan_ip, self._gw_state, self._gw_event)
-            await self.gateway.start()
-            if DOORBELL_ID not in self.records:
-                self.records[DOORBELL_ID] = {
-                    "id": DOORBELL_ID, "name": "门铃", "room": gw["room"], "kind": "doorbell",
-                    "model": gw["model"], "driver": "gw2bell", "hidden": False, "tone": 10, "volume": 50,
-                }
-                self.states[DOORBELL_ID] = {"online": False}
-                self.save_devices()
+        self.lan_ip = os.environ.get("HUB_LAN_IP") or self.settings.get("lan_ip", "0.0.0.0")
+        await self._start_gateway()
         for record in self.records.values():
             self._attach(record)
         self._tasks.append(asyncio.create_task(self._cloud_loop()))
+        self._tasks.append(asyncio.create_task(self._gateway_watch()))
 
     async def stop(self) -> None:
         for task in [*self._tasks, *self._poll_tasks.values()]:
             task.cancel()
+        if self.gateway:
+            self.gateway.stop()
+
+    # --- gateway connection & settings --------------------------------------
+    def _gw_record(self) -> dict | None:
+        return next((r for r in self.records.values() if r["kind"] == "gateway"), None)
+
+    async def _start_gateway(self) -> None:
+        gw = self._gw_record()
+        self.gateway = None
+        if not gw or not gateway_ip(gw):
+            return
+        gateway = Gateway2(gateway_ip(gw), gw["sid"], gw.get("lan_key", ""), self.lan_ip, self._gw_state, self._gw_event)
+        try:
+            await gateway.start()
+        except OSError as e:
+            log.warning("gateway %s could not start: %s", gateway_ip(gw), e)
+            return
+        self.gateway = gateway
+        if DOORBELL_ID not in self.records:
+            self.records[DOORBELL_ID] = {
+                "id": DOORBELL_ID, "name": "门铃", "room": gw["room"], "kind": "doorbell",
+                "model": gw["model"], "driver": "gw2bell", "hidden": False, "tone": 10, "volume": 50,
+            }
+            self.states[DOORBELL_ID] = {"online": False}
+            self.save_devices()
+
+    async def _restart_gateway(self) -> None:
+        for rid, record in self.records.items():
+            if record.get("driver") in GW_DRIVERS:
+                self._detach(rid)
+                self.update_state(rid, {"online": False})
+        if self.gateway:
+            self.gateway.stop()
+        await self._start_gateway()
+        for record in list(self.records.values()):
+            if record.get("driver") in GW_DRIVERS:
+                self._attach(record)
+        self.broadcast({"type": "devices"})
+        self.broadcast({"type": "gateway"})
+
+    async def _gateway_watch(self) -> None:
+        last = None
+        while True:
+            connected = bool(self.gateway and self.gateway.connected)
+            if connected != last:
+                last = connected
+                self.broadcast({"type": "gateway"})
+            await asyncio.sleep(5)
+
+    def gateway_status(self) -> dict:
+        gw = self._gw_record()
+        children = [r for r in self.records.values() if r.get("driver") == "gw2"]
+        status = {
+            "configured": gw is not None,
+            "connected": bool(self.gateway and self.gateway.connected),
+            "last_seen": (self.gateway.last_seen or None) if self.gateway else None,
+            "children": len(children),
+            "children_online": sum(1 for r in children if self.states.get(r["id"], {}).get("online")),
+            "candidates": [
+                {"id": did, "name": d.get("name", d["model"]), "model": d["model"], "ip": d.get("localip"),
+                 "room": d["room"], "online": bool(d.get("isOnline")), "supported": d["model"] in SUPPORTED_GATEWAYS}
+                for did, d in self.cloud_gateways.items()
+            ],
+        }
+        if gw:
+            status.update({
+                "id": gw["id"], "name": gw.get("local_name") or gw["name"], "model": gw["model"],
+                "room": gw.get("local_room") or gw["room"], "ip": gateway_ip(gw), "cloud_ip": gw.get("ip"),
+                "mac": ":".join(gw["sid"][i:i + 2] for i in range(0, len(gw["sid"]), 2)).upper(),
+                "has_key": bool(gw.get("lan_key")), "has_token": bool(gw.get("token")),
+            })
+        return status
+
+    async def configure_gateway(self, did: str, ip: str | None = None, lan_key: str | None = None) -> dict:
+        """Pick which gateway the hub talks to, and its IP / LAN key. Empty lan_key keeps the saved one."""
+        if lan_key and not re.fullmatch(r"[0-9A-Za-z]{16}", lan_key):
+            raise ValueError("局域网密钥应为 16 位字母或数字")
+        if ip:
+            try:
+                ipaddress.IPv4Address(ip)
+            except ValueError:
+                raise ValueError("IP 地址格式不对") from None
+        current = self._gw_record()
+        keep = current if current and current["id"] == did else {}
+        dev = self.cloud_gateways.get(did)
+        if dev:
+            if dev["model"] not in SUPPORTED_GATEWAYS:
+                raise ValueError("这个网关不支持局域网协议，无法本地控制")
+            record = gateway_record(dev, dev["room"], keep.get("lan_key", ""))
+            record.update({f: keep[f] for f in LOCAL_FIELDS if f in keep})
+        elif keep:
+            record = dict(keep)
+        else:
+            raise ValueError("找不到这个网关，请先同步一次米家")
+        if lan_key:
+            record["lan_key"] = lan_key
+        if ip is not None:
+            if ip and ip != record.get("ip"):
+                record["ip_override"] = ip
+            else:
+                record.pop("ip_override", None)
+        if not gateway_ip(record):
+            raise ValueError("米家没有提供这个网关的 IP，请手动填写")
+        if current and current["id"] != did:
+            self.records.pop(current["id"])
+            self.states.pop(current["id"], None)
+        self.records[did] = record
+        self.states.setdefault(did, {"online": False})
+        self.save_devices()
+        await self._restart_gateway()
+        return self.gateway_status()
 
     # --- drivers & polling ---------------------------------------------
     def _attach(self, record: dict) -> None:
         driver_name = record.get("driver")
-        if driver_name in ("gw2", "gw2bell"):
+        if driver_name in GW_DRIVERS:
             if not self.gateway:
                 return
             driver_cls = Gw2DoorbellDriver if driver_name == "gw2bell" else Gw2DeviceDriver
@@ -161,12 +276,14 @@ class Hub:
         return {"active": remaining > 0, "remaining": remaining, "found": self.pairing["found"]}
 
     def _gw_miio(self) -> "miio.Device":
-        gw = next((r for r in self.records.values() if r["kind"] == "gateway"), None)
-        if not gw or not gw.get("token"):
-            raise RuntimeError("还没有网关 2 的密钥，请先在米家同步一次")
+        gw = self._gw_record()
+        if not gw:
+            raise RuntimeError("还没有配置网关")
+        if not gw.get("token"):
+            raise RuntimeError("还没有网关的设备密钥，请先在米家同步一次")
         if not self.gateway:
-            raise RuntimeError("网关 2 未连接")
-        return miio.Device(gw["ip"], gw["token"], timeout=3)
+            raise RuntimeError("网关未连接")
+        return miio.Device(gateway_ip(gw), gw["token"], timeout=3)
 
     async def gateway_children(self) -> list[dict]:
         table = await self._gw_table(self._gw_miio(), attempts=3)
@@ -287,9 +404,15 @@ class Hub:
                     cloud_file.save(self.cloud.data)
             room_of, room_order = rooms_from_homes(homes)
             cloud_devices = [d for h in homes for d in h["devices"]]
-            gw = next((r for r in self.records.values() if r["kind"] == "gateway"), {})
+            self.cloud_gateways = {
+                str(d["did"]): {**d, "room": room_of.get(str(d["did"]), UNASSIGNED)}
+                for d in cloud_devices if d.get("model", "").startswith("lumi.gateway")
+            }
+            gw = self._gw_record() or {}
             records, summary = merge(cloud_devices, room_of, self.records, gw.get("id", ""), gw.get("lan_key", ""))
-            self._apply_records(records)
+            if self._apply_records(records):
+                await self._restart_gateway()
+            self.broadcast({"type": "gateway"})
             self.settings["rooms"] = room_order
             self.save_settings()
             self.cloud_status.update(last_sync=time.time(), last_error=None, summary=summary)
@@ -298,13 +421,16 @@ class Hub:
             log.info("cloud sync: %s", {k: len(v) for k, v in summary.items()})
             return summary
 
-    def _apply_records(self, records: list[dict]) -> None:
+    def _apply_records(self, records: list[dict]) -> bool:
+        """Store merged records and reattach changed drivers. True if the gateway's address changed."""
+        gateway_changed = False
         for record in records:
             rid = record["id"]
             old = self.records.get(rid)
             self.records[rid] = record
             self.states.setdefault(rid, {"online": False})
             if record["kind"] == "gateway":
+                gateway_changed |= bool(old) and gateway_ip(old) != gateway_ip(record)
                 continue
             if old is None or any(old.get(f) != record.get(f) for f in DRIVER_FIELDS):
                 self._detach(rid)
@@ -314,6 +440,7 @@ class Hub:
                 if driver:
                     driver.record = record
         self.save_devices()
+        return gateway_changed
 
     # --- views & persistence ---------------------------------------------
     def public_device(self, device_id: str) -> dict:

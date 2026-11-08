@@ -121,6 +121,34 @@ export interface GatewayChild {
   device: Device | null
 }
 
+export interface GatewayCandidate {
+  id: string
+  name: string
+  model: string
+  ip: string | null
+  room: string
+  online: boolean
+  supported: boolean
+}
+
+export interface GatewayStatus {
+  configured: boolean
+  connected: boolean
+  last_seen: number | null
+  children: number
+  children_online: number
+  candidates: GatewayCandidate[]
+  id?: string
+  name?: string
+  model?: string
+  room?: string
+  ip?: string
+  cloud_ip?: string | null
+  mac?: string
+  has_key?: boolean
+  has_token?: boolean
+}
+
 export interface PairingStatus {
   active: boolean
   remaining: number
@@ -160,6 +188,9 @@ export const api = {
   cloudLogout: () => request<unknown>('POST', '/cloud/logout'),
   pairing: () => request<PairingStatus>('GET', '/gateway/pairing'),
   startPairing: (seconds = 120) => request<PairingStatus>('POST', '/gateway/pairing', { seconds }),
+  gateway: () => request<GatewayStatus>('GET', '/gateway'),
+  configureGateway: (config: { id: string; ip?: string; lan_key?: string }) =>
+    request<GatewayStatus>('PUT', '/gateway', config),
   gatewayChildren: () => request<GatewayChild[]>('GET', '/gateway/children'),
   panels: () => request<Record<string, PanelItem[]>>('GET', '/panels'),
   setPanel: (room: string, layout: PanelItem[]) =>

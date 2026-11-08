@@ -9,7 +9,7 @@ CLOUD_KINDS = {"xiaomi.aircondition.ma2": "ac", "lumi.acpartner.v2": "ac", "viom
                "mrbond.airer.m1pro": "airer"}
 SYNCED_FIELDS = ("name", "room", "model", "ip", "token")
 # Set in this app only; Mi Home cannot be written back to with our session.
-LOCAL_FIELDS = ("hidden", "local_name", "local_room", "name_auto")
+LOCAL_FIELDS = ("hidden", "local_name", "local_room", "name_auto", "ip_override")
 
 
 def convert(dev: dict, gateway_ids: set[str], room: str) -> dict | None:

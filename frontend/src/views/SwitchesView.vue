@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { showToast } from 'vant'
 import { api, type Device } from '../api'
-import { deviceList, devices, loadDevices, loadRules, onHubEvent, rooms, rules } from '../store'
+import { deviceList, devices, gatewayName, loadDevices, loadRules, onHubEvent, rooms, rules } from '../store'
 import BindingEditor from '../components/BindingEditor.vue'
 import { BatteryMedium, ChevronDown, ChevronRight, ChevronUp, Hand, Pencil, Plus, ToggleRight } from 'lucide-vue-next'
 import DeviceIcon from '../components/DeviceIcon.vue'
@@ -136,15 +136,15 @@ async function saveName() {
       </div>
     </div>
 
-    <van-empty v-if="!active.length" description="还没有接入网关 2 的开关，到「设备」页添加" />
+    <van-empty v-if="!active.length" :description="`还没有接入「${gatewayName}」的开关，到「设备」页添加`" />
 
     <div v-if="pending.length" class="pending">
       <button class="section-label pending-head" @click="showPending = !showPending">
-        <span>还没迁移到网关 2 · {{ pending.length }}</span>
+        <span>还没迁移到{{ gatewayName }} · {{ pending.length }}</span>
         <component :is="showPending ? ChevronUp : ChevronDown" :size="15" />
       </button>
       <template v-if="showPending">
-        <div class="pending-tip">这些开关还接在多模网关上，由米家控制。迁移到网关 2 后才能在这里设置。</div>
+        <div class="pending-tip">这些开关还接在多模网关上，由米家控制。重新配对到「{{ gatewayName }}」后才能在这里设置。</div>
         <div v-for="d in pending" :id="`sw-${d.id}`" :key="d.id" class="pending-item" :class="{ flash: flashing === d.id }">
           <span>{{ d.name }}</span><span class="meta">{{ d.room }}</span>
         </div>

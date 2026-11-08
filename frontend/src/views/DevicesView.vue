@@ -5,8 +5,7 @@ import { api, type Device } from '../api'
 import { EVENT_NAMES, cloud, deviceList, devices, events, loadDevices, loadEvents, rooms } from '../store'
 import CloudCard from '../components/CloudCard.vue'
 import DeviceIcon from '../components/DeviceIcon.vue'
-import GatewayChildren from '../components/GatewayChildren.vue'
-import PairingCard from '../components/PairingCard.vue'
+import GatewayCard from '../components/gateway/GatewayCard.vue'
 import PageHeader from '../components/PageHeader.vue'
 import { Check, ChevronRight, EyeOff } from 'lucide-vue-next'
 import { miHomeLabel } from '../naming'
@@ -79,8 +78,8 @@ const timeFmt = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-d
   <div class="devices">
     <PageHeader title="设备" :subtitle="`共 ${deviceList.length} 台 · ${onlineCount} 台在线`" />
     <div class="top-cards">
+      <GatewayCard @edit="edit" />
       <CloudCard />
-      <PairingCard />
     </div>
     <van-tabs v-model:active="tab" line-width="18px" class="tabs">
       <van-tab title="设备管理" name="devices">
@@ -102,9 +101,6 @@ const timeFmt = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-d
             </div>
           </section>
         </div>
-      </van-tab>
-      <van-tab title="网关 2" name="gateway">
-        <GatewayChildren v-if="tab === 'gateway'" @edit="edit" />
       </van-tab>
       <van-tab title="事件日志" name="events">
         <div class="tip">按下任意无线开关，这里会实时显示是哪个开关。</div>

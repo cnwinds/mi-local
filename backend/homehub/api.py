@@ -249,6 +249,25 @@ def cloud_logout():
     return {"ok": True}
 
 
+class GatewayConfig(BaseModel):
+    id: str
+    ip: str | None = None
+    lan_key: str | None = None
+
+
+@app.get("/api/gateway")
+def gateway_status():
+    return hub.gateway_status()
+
+
+@app.put("/api/gateway")
+async def configure_gateway(config: GatewayConfig):
+    try:
+        return await hub.configure_gateway(config.id, config.ip, config.lan_key)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 class PairingRequest(BaseModel):
     seconds: int = Field(120, ge=10, le=300)
 
@@ -265,7 +284,7 @@ async def start_pairing(req: PairingRequest):
     except RuntimeError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
-        raise HTTPException(502, f"网关 2 没有响应：{e}")
+        raise HTTPException(502, f"网关没有响应：{e}")
 
 
 @app.get("/api/gateway/children")
@@ -275,7 +294,7 @@ async def gateway_children():
     except RuntimeError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
-        raise HTTPException(502, f"网关 2 没有响应：{e}")
+        raise HTTPException(502, f"网关没有响应：{e}")
 
 
 @app.get("/api/events")
