@@ -61,7 +61,7 @@ function eventTime(ts: number) {
       <CloudCard />
       <VoiceCard />
     </div>
-    <van-tabs v-model:active="tab" line-width="18px" class="tabs">
+    <van-tabs v-model:active="tab" line-width="calc((100% - 8px) / 3)" duration="0.35" class="tabs">
       <van-tab title="设备管理" name="devices">
         <div class="groups">
           <section v-if="gateway" class="group">
@@ -132,6 +132,42 @@ function eventTime(ts: number) {
 }
 .tabs {
   margin-top: 8px;
+}
+.tabs :deep(.van-tabs__wrap) {
+  height: auto;
+  padding: 4px 16px 8px;
+  background: transparent;
+}
+.tabs :deep(.van-tabs__nav) {
+  position: relative;
+  max-width: 480px;
+  height: 38px;
+  padding: 4px;
+  box-sizing: border-box;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+.tabs :deep(.van-tab) {
+  z-index: 1;
+  border-radius: 9px;
+  font-size: 14px;
+  color: var(--text-2);
+  transition: color 0.25s;
+}
+.tabs :deep(.van-tab--active) {
+  color: var(--text);
+  font-weight: 600;
+}
+.tabs :deep(.van-tabs__line) {
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  z-index: 0;
+  height: auto;
+  border-radius: 9px;
+  background: var(--surface);
+  box-shadow: var(--shadow-1), 0 0 0 1px color-mix(in srgb, var(--text) 5%, transparent);
+  transition-timing-function: cubic-bezier(0.3, 1.3, 0.5, 1);
 }
 .groups {
   padding: 0 16px;

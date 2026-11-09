@@ -29,6 +29,7 @@ watch(
 const dateFmt = new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' })
 const name = (id: string) => devices[id]?.name ?? id
 const hours = (s: number) => (s >= 36000 ? Math.round(s / 3600) : Math.round(s / 360) / 10)
+const duration = (s: number) => (s >= 3600 ? `${hours(s)} 小时` : s >= 60 ? `${Math.round(s / 60)} 分钟` : s > 0 ? '不到 1 分钟' : '0')
 const perDay = (n: number) => {
   const v = n / (stats.value?.days || 1)
   return v >= 10 ? Math.round(v) : Math.round(v * 10) / 10
@@ -49,7 +50,7 @@ const insights = computed(() => {
   if (!s) return []
   const out: string[] = []
   const top = usage.value[0]
-  if (top && top.on_seconds > 0) out.push(`用得最多的是「${name(top.device)}」，平均每天开 ${hours(top.on_seconds / s.days)} 小时`)
+  if (top && top.on_seconds > 0) out.push(`用得最多的是「${name(top.device)}」，平均每天开 ${duration(top.on_seconds / s.days)}`)
   if (s.peak_hour !== null) out.push(`一天里最忙的是 ${hourRange(s.peak_hour)}`)
   const week = s.heatmap.slice(0, 5).flat().reduce((a, b) => a + b, 0) / 5
   const weekend = s.heatmap.slice(5).flat().reduce((a, b) => a + b, 0) / 2
@@ -137,7 +138,7 @@ const insights = computed(() => {
           <div class="rank-body">
             <div class="rank-top">
               <span class="rank-name">{{ name(u.device) }}</span>
-              <span class="rank-value num">{{ hours(u.on_seconds) }} 小时</span>
+              <span class="rank-value num">{{ duration(u.on_seconds) }}</span>
             </div>
             <div class="track"><span class="fill warm" :style="{ width: `${(u.on_seconds / usageMax) * 100}%` }" /></div>
             <div class="rank-meta">使用率 {{ Math.round(u.rate * 100) }}% · 开了 {{ u.turn_ons }} 次</div>
