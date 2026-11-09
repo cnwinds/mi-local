@@ -9,11 +9,12 @@ import DeviceSheet from '../components/DeviceSheet.vue'
 import GatewayCard from '../components/gateway/GatewayCard.vue'
 import PageHeader from '../components/PageHeader.vue'
 import VoiceCard from '../components/VoiceCard.vue'
-import LockinCard from '../components/LockinCard.vue'
-import { ChevronRight, EyeOff } from 'lucide-vue-next'
+import AddDeviceSheet from '../components/add/AddDeviceSheet.vue'
+import { ChevronRight, EyeOff, Plus } from 'lucide-vue-next'
 
 const tab = ref('devices')
 const detailId = ref<string | null>(null)
+const showAdd = ref(false)
 
 onMounted(loadEvents)
 
@@ -36,12 +37,13 @@ const timeFmt = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-d
 
 <template>
   <div class="devices">
-    <PageHeader title="设备" :subtitle="`共 ${deviceList.length} 台 · ${onlineCount} 台在线`" />
+    <PageHeader title="设备" :subtitle="`共 ${deviceList.length} 台 · ${onlineCount} 台在线`">
+      <button class="add-btn" @click="showAdd = true"><Plus :size="18" :stroke-width="2.4" />添加设备</button>
+    </PageHeader>
     <div class="top-cards">
       <GatewayCard @edit="edit" />
       <CloudCard />
-      <VoiceCard @edit="edit" />
-      <LockinCard @edit="edit" />
+      <VoiceCard />
     </div>
     <van-tabs v-model:active="tab" line-width="18px" class="tabs">
       <van-tab title="设备管理" name="devices">
@@ -74,10 +76,27 @@ const timeFmt = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-d
     </van-tabs>
 
     <DeviceSheet :device-id="detailId" @close="detailId = null" />
+    <AddDeviceSheet :show="showAdd" @close="showAdd = false" @edit="edit" />
   </div>
 </template>
 
 <style scoped>
+.add-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 40px;
+  padding: 0 16px 0 12px;
+  border-radius: 20px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 6px 18px rgba(75, 103, 245, 0.3);
+}
+.add-btn:active {
+  transform: scale(0.96);
+}
 .top-cards {
   display: grid;
   gap: 12px;

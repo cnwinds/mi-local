@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ChevronRight, KeyRound, Plus, Router, Settings2 } from 'lucide-vue-next'
+import { ChevronRight, KeyRound, Router, Settings2 } from 'lucide-vue-next'
 import type { Device } from '../../api'
 import { gateway, pairing } from '../../store'
 import GatewayDetail from './GatewayDetail.vue'
@@ -53,7 +53,6 @@ const openPairing = () => {
           <span class="stat-label">子设备在线</span>
           <ChevronRight :size="16" class="chev" />
         </button>
-        <button class="add" @click="openPairing"><Plus :size="17" />添加子设备</button>
       </div>
     </template>
 
@@ -176,8 +175,7 @@ const openPairing = () => {
   gap: 8px;
   margin-top: 12px;
 }
-.stat,
-.add {
+.stat {
   height: 42px;
   border-radius: 12px;
   display: flex;
@@ -204,12 +202,5 @@ const openPairing = () => {
 .chev {
   margin-left: auto;
   color: var(--text-3);
-}
-.add {
-  gap: 4px;
-  padding: 0 14px;
-  color: var(--accent);
-  font-weight: 600;
-  background: var(--accent-soft);
 }
 </style>
