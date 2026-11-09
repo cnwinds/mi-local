@@ -12,6 +12,7 @@ import {
   type PanelItem,
   type Rule,
   type Scene,
+  type VoiceStatus,
 } from './api'
 
 export const devices = reactive<Record<string, Device>>({})
@@ -25,6 +26,7 @@ export const gateway = ref<GatewayStatus | null>(null)
 export const gatewayName = computed(() => gateway.value?.name || '网关')
 export const panels = ref<Record<string, PanelItem[]>>({})
 export const scenes = ref<Scene[]>([])
+export const voice = ref<VoiceStatus | null>(null)
 
 type EventListener = (e: HubEvent) => void
 const eventListeners = new Set<EventListener>()
@@ -51,6 +53,10 @@ export async function loadRules() {
 
 export async function loadCloud() {
   cloud.value = await api.cloud()
+}
+
+export async function loadVoice() {
+  voice.value = await api.voice()
 }
 
 export async function loadPairing() {
@@ -112,6 +118,7 @@ export function connect() {
     connected.value = true
     loadDevices()
     loadCloud()
+    loadVoice()
     loadGateway()
     loadPanels()
     loadScenes()
@@ -129,8 +136,11 @@ export function connect() {
       ensureFields(data.id)
     } else if (data.type === 'devices') {
       loadDevices()
+      loadVoice()
     } else if (data.type === 'cloud') {
       loadCloud()
+    } else if (data.type === 'voice') {
+      loadVoice()
     } else if (data.type === 'gateway') {
       loadGateway()
     } else if (data.type === 'pairing') {

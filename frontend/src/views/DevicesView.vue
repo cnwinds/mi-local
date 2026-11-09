@@ -8,6 +8,7 @@ import DeviceIcon from '../components/DeviceIcon.vue'
 import DeviceSheet from '../components/DeviceSheet.vue'
 import GatewayCard from '../components/gateway/GatewayCard.vue'
 import PageHeader from '../components/PageHeader.vue'
+import VoiceCard from '../components/VoiceCard.vue'
 import { ChevronRight, EyeOff } from 'lucide-vue-next'
 
 const tab = ref('devices')
@@ -38,6 +39,7 @@ const timeFmt = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-d
     <div class="top-cards">
       <GatewayCard @edit="edit" />
       <CloudCard />
+      <VoiceCard @edit="edit" />
     </div>
     <van-tabs v-model:active="tab" line-width="18px" class="tabs">
       <van-tab title="设备管理" name="devices">

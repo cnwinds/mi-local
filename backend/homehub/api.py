@@ -303,6 +303,38 @@ async def gateway_children():
         raise HTTPException(502, f"网关没有响应：{e}")
 
 
+class MideaLogin(BaseModel):
+    account: str = Field(min_length=1)
+    password: str = Field(min_length=1)
+
+
+@app.post("/api/midea/setup")
+async def midea_setup(login: MideaLogin):
+    try:
+        return await hub.setup_midea(login.account, login.password)
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"接入失败：{e}")
+
+
+class VoiceConfig(BaseModel):
+    enabled: bool
+
+
+@app.get("/api/voice")
+def voice_status():
+    return hub.voice.public_status()
+
+
+@app.put("/api/voice")
+def set_voice(config: VoiceConfig):
+    hub.settings["voice_bridge"] = config.enabled
+    hub.save_settings()
+    hub.broadcast({"type": "voice"})
+    return hub.voice.public_status()
+
+
 @app.get("/api/events")
 def list_events():
     return list(hub.events)

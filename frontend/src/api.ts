@@ -172,6 +172,15 @@ export interface PairingStatus {
   found: string[]
 }
 
+export interface VoiceStatus {
+  enabled: boolean
+  active: boolean
+  error: string | null
+  devices: string[]
+  speakers: { name: string; online: boolean }[]
+  last: { ts: number; speaker: string; query: string; reply: string } | null
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method,
@@ -218,4 +227,7 @@ export const api = {
   updateScene: (id: string, scene: Scene) => request<Scene>('PUT', `/scenes/${id}`, scene),
   deleteScene: (id: string) => request<unknown>('DELETE', `/scenes/${id}`),
   runScene: (id: string) => request<unknown>('POST', `/scenes/${id}/run`),
+  setupMidea: (account: string, password: string) => request<Device[]>('POST', '/midea/setup', { account, password }),
+  voice: () => request<VoiceStatus>('GET', '/voice'),
+  setVoice: (enabled: boolean) => request<VoiceStatus>('PUT', '/voice', { enabled }),
 }

@@ -16,12 +16,13 @@ from .drivers.miio_wifi import DRIVERS
 from .micloud import MiCloud
 from .rules import RuleEngine
 from .store import cloud_file, devices_file, panels_file, rules_file, scenes_file, settings_file
+from .voice import VoiceBridge
 
 log = logging.getLogger(__name__)
 
 GW2_NAMES = {"switch": "无线开关", "plug": "插座", "curtain": "窗帘"}
 PUBLIC_FIELDS = ("id", "name", "room", "kind", "model", "hidden")
-DRIVER_FIELDS = ("driver", "ip", "token", "sid")
+DRIVER_FIELDS = ("driver", "ip", "token", "sid", "midea_token", "device_id")
 CLOUD_SYNC_INTERVAL = 30 * 60
 DOORBELL_ID = "gw2.doorbell"
 GW_DRIVERS = ("gw2", "gw2bell")
@@ -56,6 +57,7 @@ class Hub:
         self.lan_ip = "0.0.0.0"
         # Gateways in the Mi Home account as of the last sync, so the user can pick one.
         self.cloud_gateways: dict[str, dict] = {}
+        self.voice = VoiceBridge(self)
 
     async def start(self) -> None:
         self.lan_ip = os.environ.get("HUB_LAN_IP") or self.settings.get("lan_ip", "0.0.0.0")
@@ -64,6 +66,7 @@ class Hub:
             self._attach(record)
         self._tasks.append(asyncio.create_task(self._cloud_loop()))
         self._tasks.append(asyncio.create_task(self._gateway_watch()))
+        self._tasks.append(asyncio.create_task(self.voice.run()))
 
     async def stop(self) -> None:
         for task in [*self._tasks, *self._poll_tasks.values()]:
@@ -194,6 +197,9 @@ class Hub:
             if record.get("model") not in CLOUD_DRIVERS:
                 return
             driver = CLOUD_DRIVERS[record["model"]](record, self.cloud)
+        elif driver_name == "midea":
+            from .drivers.midea import MideaAcDriver
+            driver = MideaAcDriver(record)
         elif driver_name in DRIVERS:
             driver = DRIVERS[driver_name](record)
             if driver_name == "miio" and self.cloud.logged_in:
@@ -468,6 +474,18 @@ class Hub:
                     driver.record = record
         self.save_devices()
         return gateway_changed
+
+    # --- Midea appliances ---------------------------------------------------
+    async def setup_midea(self, account: str, password: str) -> list[dict]:
+        from . import midea
+        records = await midea.setup(account, password)
+        for record in records:
+            old = self.records.get(record["id"])
+            if old:
+                record.update({f: old[f] for f in LOCAL_FIELDS if f in old})
+        self._apply_records(records)
+        self.broadcast({"type": "devices"})
+        return [self.public_device(r["id"]) for r in records]
 
     # --- views & persistence ---------------------------------------------
     def public_device(self, device_id: str) -> dict:
