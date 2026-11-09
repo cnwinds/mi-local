@@ -20,7 +20,7 @@ export function suggestSwitchName(all: Device[]): { name: string; room: string }
   const room = rooms.length === 1 ? rooms[0] : ''
   let label: string
   if (targets.length === 1) label = fullName(targets[0])
-  else if (room && targets.length > 2) label = `${room}的灯`
+  else if (room && targets.length > 2) label = `${room}的${targets.every((d) => d.kind === 'light') ? '灯' : '设备'}`
   else label = targets.slice(0, 2).map(fullName).join('和') + (targets.length > 2 ? '等' : '')
   return { name: `${label}开关`, room }
 }

@@ -142,7 +142,7 @@ onMounted(loadRules)
       </template>
     </div>
 
-    <BindingEditor :switch-id="editSwitch" :event="editEvent" :simple="editEvent === 'click'" @close="editSwitch = null" />
+    <BindingEditor :switch-id="editSwitch" :event="editEvent" @close="editSwitch = null" />
     <DeviceSheet :device-id="settingsId" @close="settingsId = null" />
   </div>
 </template>

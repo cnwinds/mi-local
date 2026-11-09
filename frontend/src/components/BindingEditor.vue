@@ -5,8 +5,7 @@ import { api, type Device, type Rule, type RuleAction } from '../api'
 import { EVENT_NAMES, deviceList, devices, loadDevices, loadRules, rooms, rules } from '../store'
 import { suggestSwitchName } from '../naming'
 
-// simple: pick on/off devices for a single click; every pick toggles, and the switch is renamed after them.
-const props = defineProps<{ switchId: string | null; event: string; simple?: boolean }>()
+const props = defineProps<{ switchId: string | null; event: string }>()
 const emit = defineEmits<{ close: [] }>()
 
 const show = computed({
@@ -42,7 +41,7 @@ watch(
 
 // The switch's own room first, then rooms of devices already picked, then the rest in Mi Home order.
 const groups = computed(() => {
-  const kinds = props.simple ? ['light', 'plug', 'doorbell'] : ['light', 'plug', 'curtain', 'ac', 'bath_heater', 'airer', 'doorbell']
+  const kinds = ['light', 'plug', 'curtain', 'ac', 'bath_heater', 'airer', 'doorbell']
   const candidates = deviceList.value.filter((d) => kinds.includes(d.kind) && !d.hidden)
   const first = new Set([sw.value?.room, ...Object.keys(picked.value).map((id) => devices[id]?.room)].filter(Boolean))
   const order = [...first, ...rooms.value.filter((r) => !first.has(r))]
@@ -68,7 +67,7 @@ async function save() {
     if (id) await api.deleteRule(id)
   } else {
     let name = sw.value.name
-    if (props.simple || (props.event === 'click' && (sw.value.name_auto || sw.value.name === sw.value.cloud_name))) {
+    if (props.event === 'click' && (sw.value.name_auto || sw.value.name === sw.value.cloud_name)) {
       const suggestion = suggestSwitchName(actions.map((a) => devices[a.device]))
       if (suggestion) {
         name = suggestion.name
@@ -99,13 +98,10 @@ async function save() {
     <div class="editor" v-if="sw">
       <div class="bar">
         <span class="cancel" @click="emit('close')">取消</span>
-        <span class="heading">{{ simple ? `「${sw.name}」控制哪些灯` : `${EVENT_NAMES[event]}「${sw.name}」` }}</span>
+        <span class="heading">{{ `${EVENT_NAMES[event]}「${sw.name}」` }}</span>
         <span class="save" @click="save">保存</span>
       </div>
-      <div class="sub">
-        <template v-if="simple">按一下开关，选中的设备一起开或关。保存后开关会按它们自动命名、换房间。</template>
-        <template v-else>{{ pickedCount ? `已选 ${pickedCount} 个设备` : '选择要控制的设备，不选则清除这个按法' }}</template>
-      </div>
+      <div class="sub">{{ pickedCount ? `已选 ${pickedCount} 个设备` : '选择要控制的设备，不选则清除这个按法' }}</div>
 
       <div class="scroll">
         <van-cell-group v-for="g in groups" :key="g.room" inset :title="g.room">
@@ -115,16 +111,16 @@ async function save() {
             </template>
             <template #value>
               <span v-if="d.kind === 'doorbell'" class="try" @click.stop="api.command(d.id, 'ring')">试听</span>
-              <select v-else-if="picked[d.id] && !simple" v-model="picked[d.id]" class="action-select" @click.stop>
+              <select v-else-if="picked[d.id]" v-model="picked[d.id]" class="action-select" @click.stop>
                 <option v-for="[value, label] in ACTIONS[d.kind] ?? []" :key="value" :value="value">{{ label }}</option>
               </select>
               <span v-else-if="!d.state.online" class="offline">离线</span>
-              <span v-else-if="simple && d.state.power" class="on">亮着</span>
+              <span v-else-if="d.kind === 'light' && d.state.power" class="on">亮着</span>
             </template>
           </van-cell>
         </van-cell-group>
         <div class="hint" v-if="multiToggle">多个设备都选「切换」时：只要有一个亮着就全部关闭，否则全部打开。</div>
-        <div class="hint" v-if="!simple && event === 'click' && (sw.name_auto || sw.name === sw.cloud_name)">
+        <div class="hint" v-if="event === 'click' && (sw.name_auto || sw.name === sw.cloud_name)">
           保存后开关会按它控制的设备自动命名，例如「卧室筒灯开关」。
         </div>
       </div>
