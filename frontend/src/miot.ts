@@ -41,6 +41,51 @@ export function mainPowerKey(fields: DeviceField[]) {
   return fields[0]?.prop === 'on' ? fields[0].key : undefined
 }
 
+const METRIC_PROPS = [
+  'run-status', 'left-time', 'status', 'temperature', 'relative-humidity', 'pm2.5-density', 'tds-out',
+  'filter-life-level', 'mode', 'target-temperature', 'fault', 'heat-level',
+]
+const CONTROL_PROPS = ['target-temperature', 'target-humidity', 'fan-level', 'volume', 'mode', 'brightness']
+const NO_FAULT = /^(无故障|正常)$/
+
+export interface Metric {
+  field: DeviceField
+  text: string
+}
+
+/** What a wall-panel card shows: a few readings in big type and the controls people reach for most. */
+export function cardModel(fields: DeviceField[], props: Record<string, PropValue>, powerKey?: string) {
+  const std = fields.filter((f) => !f.vendor && f.key !== powerKey)
+  const controls: DeviceField[] = []
+  for (const prop of CONTROL_PROPS) {
+    const f = std.find((x) => x.prop === prop && x.writable && !controls.includes(x))
+    if (!f || controls.length >= 2) continue
+    const fits = f.values.length ? f.values.length <= 4 : !!f.range && props[f.key] !== undefined
+    if (fits) controls.push(f)
+  }
+  const toggles = std
+    .filter((f) => f.format === 'bool' && f.writable && props[f.key] !== undefined)
+    .sort((a, b) => Number(b.prop === 'on') - Number(a.prop === 'on'))
+    .slice(0, 3)
+
+  const metrics: Metric[] = []
+  for (const prop of METRIC_PROPS) {
+    if (metrics.length >= 3) break
+    const f = std.find((x) => x.prop === prop && props[x.key] !== undefined && !controls.includes(x))
+    if (!f) continue
+    const text = formatValue(f, props[f.key])
+    if (prop === 'fault' && NO_FAULT.test(text)) continue
+    metrics.push({ field: f, text })
+  }
+  return { metrics, controls, toggles }
+}
+
+/** A label that stands on its own on a card: 灯 for a light's switch, 麦克风静音 next to the speaker's 静音. */
+export function cardLabel(f: DeviceField, fields: DeviceField[]) {
+  const base = f.prop === 'on' ? f.service : f.name
+  return f.service !== fields[0]?.service && !base.includes(f.service) ? f.service + base : base
+}
+
 const SUMMARY: [string, (s: string) => string][] = [
   ['status', (s) => s],
   ['mode', (s) => s],

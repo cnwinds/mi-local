@@ -1,20 +1,20 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watchEffect } from 'vue'
+import { computed, ref, toRef } from 'vue'
 import { ChevronDown, Minus, Plus, Power } from 'lucide-vue-next'
-import type { Device, DeviceField, PropValue } from '../api'
-import { deviceFields, ensureFields, sendCommand } from '../store'
-import { formatValue, isNumeric, mainPowerKey, unitLabel } from '../miot'
+import type { Device, DeviceField } from '../api'
+import { cardModel, formatValue, unitLabel } from '../miot'
+import { controlOf as control, useMiot } from '../useMiot'
 
 const props = defineProps<{ device: Device }>()
 
-watchEffect(() => ensureFields(props.device.id))
+const { fields, values, powerKey, on, set, num, step, togglePower } = useMiot(toRef(props, 'device'))
 
-const fields = computed(() => deviceFields[props.device.id] ?? [])
-const values = computed(() => props.device.state.props ?? {})
-const powerKey = computed(() => mainPowerKey(fields.value))
-const on = computed(() => (powerKey.value ? values.value[powerKey.value] === true : true))
-const pending = reactive<Record<string, number>>({})
-const timers: Record<string, ReturnType<typeof setTimeout>> = {}
+const hero = computed(() =>
+  cardModel(fields.value, values.value, powerKey.value).metrics.map((m) => {
+    const hit = /^(-?[\d.]+)\s*(.*)$/.exec(m.text)
+    return { label: m.field.name, value: hit ? hit[1] : m.text, unit: hit ? hit[2] : '', text: !hit }
+  }),
+)
 
 const showMore = ref(false)
 
@@ -34,49 +34,29 @@ const moreGroups = computed(() => groupBy(fields.value.filter((f) => f.vendor)))
 const moreCount = computed(() => moreGroups.value.reduce((n, g) => n + g.items.length, 0))
 const groups = computed(() => [...mainGroups.value, ...(showMore.value ? moreGroups.value : [])])
 
-type Control = 'switch' | 'chips' | 'stepper' | 'slider' | 'text'
-function control(f: DeviceField): Control {
-  if (!f.writable) return 'text'
-  if (f.format === 'bool') return 'switch'
-  if (f.values.length) return 'chips'
-  if (f.range && isNumeric(f)) return (f.range[1] - f.range[0]) / f.range[2] <= 60 ? 'stepper' : 'slider'
-  return 'text'
-}
-
 function label(f: DeviceField, group: DeviceField[]) {
   return f.prop === 'on' && group.length === 1 ? f.service : f.name
-}
-
-function set(f: DeviceField, value: PropValue) {
-  sendCommand(props.device.id, 'set_prop', { key: f.key, value }, { props: { ...values.value, [f.key]: value } })
-}
-
-function num(f: DeviceField) {
-  return pending[f.key] ?? Number(values.value[f.key])
-}
-
-function step(f: DeviceField, dir: number) {
-  const [lo, hi, st] = f.range!
-  const next = Math.min(hi, Math.max(lo, Math.round((num(f) + dir * st) * 100) / 100))
-  pending[f.key] = next
-  clearTimeout(timers[f.key])
-  timers[f.key] = setTimeout(() => {
-    set(f, next)
-    delete pending[f.key]
-  }, 700)
-}
-
-function togglePower() {
-  if (powerKey.value) set(fields.value[0], !on.value)
 }
 </script>
 
 <template>
   <div class="miot">
-    <button v-if="powerKey" class="power" :class="{ on }" @click="togglePower">
-      <Power :size="36" :stroke-width="2" />
-      <span>{{ on ? '已开启' : '已关闭' }}</span>
-    </button>
+    <div v-if="hero.length || powerKey" class="hero" :class="{ on: powerKey && on }">
+      <div v-if="!hero.length" class="hero-state">
+        <b>{{ on ? '运行中' : '已关闭' }}</b>
+        <span>{{ on ? '点右侧按钮关闭' : '点右侧按钮开启' }}</span>
+      </div>
+      <div v-else class="hero-metrics">
+        <div v-for="m in hero" :key="m.label" class="metric">
+          <div class="value num" :class="{ text: m.text }">{{ m.value }}<small v-if="m.unit">{{ m.unit }}</small></div>
+          <div class="metric-label">{{ m.label }}</div>
+        </div>
+      </div>
+      <button v-if="powerKey" class="power" :class="{ on }" @click="togglePower">
+        <Power :size="26" :stroke-width="2.2" />
+        <span>{{ on ? '已开启' : '已关闭' }}</span>
+      </button>
+    </div>
 
     <div v-if="!fields.length" class="tip">正在读取设备能力…</div>
 
@@ -121,10 +101,70 @@ function togglePower() {
 </template>
 
 <style scoped>
+.hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px;
+  margin-bottom: 20px;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+  transition: background 0.3s;
+}
+.hero.on {
+  background: var(--accent-glow);
+}
+.hero-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.hero-state b {
+  font-size: 26px;
+  font-weight: 500;
+}
+.hero-state span {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.hero-metrics {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.metric .value {
+  font-size: 30px;
+  font-weight: 400;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.metric .value.text {
+  font-size: 20px;
+  line-height: 33px;
+}
+.metric small {
+  font-size: 14px;
+  color: var(--text-3);
+  margin-left: 2px;
+}
+.metric-label {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .power {
-  margin: 0 auto 20px;
-  width: 112px;
-  height: 112px;
+  flex: none;
+  width: 76px;
+  height: 76px;
   border-radius: 50%;
   background: var(--surface-2);
   color: var(--text-3);
@@ -132,20 +172,20 @@ function togglePower() {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  font-size: 13px;
+  gap: 3px;
+  font-size: 11px;
   transition: all 0.25s;
 }
 .power.on {
   background: var(--accent);
   color: #fff;
-  box-shadow: 0 0 0 9px var(--accent-soft);
+  box-shadow: 0 0 0 7px var(--accent-soft);
 }
 .group + .group {
   margin-top: 16px;
 }
 .rows {
-  background: var(--surface-2);
+  background: var(--surface);
   border-radius: var(--radius);
   padding: 2px 14px;
 }
@@ -188,7 +228,7 @@ function togglePower() {
 .chip {
   padding: 7px 14px;
   border-radius: 999px;
-  background: var(--surface);
+  background: var(--surface-2);
   color: var(--text-2);
   font-size: 13px;
 }
@@ -205,7 +245,7 @@ function togglePower() {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: var(--surface);
+  background: var(--surface-2);
   color: var(--text);
   display: grid;
   place-items: center;
@@ -237,7 +277,7 @@ function togglePower() {
   gap: 4px;
   padding: 8px 16px;
   border-radius: 999px;
-  background: var(--surface-2);
+  background: var(--surface);
   color: var(--text-2);
   font-size: 13px;
 }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Power } from 'lucide-vue-next'
+import { BellRing, Power } from 'lucide-vue-next'
 import type { Device } from '../api'
 import { devices, sendCommand } from '../store'
 import DeviceIcon from './DeviceIcon.vue'
@@ -9,7 +9,7 @@ import CurtainTile from './tiles/CurtainTile.vue'
 import BathHeaterTile from './tiles/BathHeaterTile.vue'
 import AirerTile from './tiles/AirerTile.vue'
 import MiotPanel from './MiotPanel.vue'
-import { miHomeLabel } from '../naming'
+import DeviceSettings from './DeviceSettings.vue'
 
 const props = defineProps<{ deviceId: string | null }>()
 const emit = defineEmits<{ close: [] }>()
@@ -22,6 +22,13 @@ const device = computed<Device | undefined>(() => (props.deviceId ? devices[prop
 const s = computed(() => device.value?.state ?? {})
 const TILES = { ac: AcTile, curtain: CurtainTile, bath_heater: BathHeaterTile, airer: AirerTile } as Record<string, unknown>
 const tile = computed(() => (device.value ? TILES[device.value.kind] : undefined))
+
+const controllable = computed(() => !!device.value && !['switch', 'gateway'].includes(device.value.kind))
+const view = ref<'control' | 'settings'>('control')
+watch(
+  () => props.deviceId,
+  () => (view.value = 'control'),
+)
 
 const brightness = ref(50)
 const colorTemp = ref(50)
@@ -40,9 +47,23 @@ function cmd(action: string, value?: unknown, optimistic?: Record<string, unknow
 </script>
 
 <template>
-  <van-popup v-model:show="show" position="bottom" round closeable>
+  <van-popup v-model:show="show" position="bottom" round closeable class="device-sheet">
     <div v-if="device" class="body">
-      <component :is="tile" v-if="tile" :device="device" class="embedded" />
+      <div v-if="controllable" class="tabs">
+        <button :class="{ on: view === 'control' }" @click="view = 'control'">控制</button>
+        <button :class="{ on: view === 'settings' }" @click="view = 'settings'">设置</button>
+      </div>
+      <template v-if="view === 'settings' || !controllable">
+        <div class="head">
+          <DeviceIcon :kind="device.kind" :model="device.model" :size="48" />
+          <div>
+            <div class="title">{{ device.name }}</div>
+            <div class="sub">{{ device.room }} · {{ s.online ? '在线' : '离线' }}<template v-if="s.battery !== undefined"> · 电量 {{ s.battery }}%</template></div>
+          </div>
+        </div>
+        <DeviceSettings :device="device" @saved="controllable ? (view = 'control') : emit('close')" />
+      </template>
+      <component :is="tile" v-else-if="tile && s.online" :device="device" class="embedded" />
       <template v-else>
         <div class="head">
           <DeviceIcon :kind="device.kind" :model="device.model" :active="!!s.power" :size="48" />
@@ -51,6 +72,11 @@ function cmd(action: string, value?: unknown, optimistic?: Record<string, unknow
             <div class="sub">{{ device.room }} · {{ s.online ? '在线' : '离线' }}</div>
           </div>
         </div>
+
+        <button v-if="s.online && device.kind === 'doorbell'" class="power on" @click="cmd('ring')">
+          <BellRing :size="40" :stroke-width="2" />
+          <span>点按响铃</span>
+        </button>
 
         <button v-if="s.online && (device.kind === 'light' || device.kind === 'plug')" class="power" :class="{ on: s.power }"
           @click="cmd(s.power ? 'turn_off' : 'turn_on', undefined, { power: !s.power })">
@@ -74,9 +100,8 @@ function cmd(action: string, value?: unknown, optimistic?: Record<string, unknow
         <div v-if="s.online && device.kind === 'plug'" class="row-label">当前功率 <span class="num">{{ s.load_power ?? 0 }} W</span></div>
         <div v-if="!s.online" class="tip">设备离线，暂时连不上</div>
         <MiotPanel v-else-if="s.props" :device="device" />
-        <div v-else-if="device.kind === 'other'" class="tip">该设备暂只支持查看在线状态</div>
+        <div v-else-if="device.kind === 'other'" class="tip">这台设备没有公开的功能说明，暂时只能查看在线状态</div>
       </template>
-      <div v-if="miHomeLabel(device)" class="mi">{{ miHomeLabel(device) }}</div>
     </div>
   </van-popup>
 </template>
@@ -89,8 +114,37 @@ function cmd(action: string, value?: unknown, optimistic?: Record<string, unknow
 }
 .embedded {
   box-shadow: none;
-  padding: 0 32px 0 0;
+  padding: 4px 0 0;
   background: transparent !important;
+}
+.tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  margin: -8px 0 18px;
+  border-radius: 12px;
+  background: var(--surface-3);
+}
+.tabs button {
+  height: 30px;
+  padding: 0 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--text-2);
+  transition: all 0.2s;
+}
+.tabs button.on {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: var(--shadow-1);
+}
+@media (min-width: 640px) {
+  .device-sheet {
+    width: 560px;
+    right: 0;
+    margin: 0 auto;
+  }
 }
 .head {
   display: flex;

@@ -13,6 +13,7 @@ import CurtainTile from '../components/tiles/CurtainTile.vue'
 import BathHeaterTile from '../components/tiles/BathHeaterTile.vue'
 import AirerTile from '../components/tiles/AirerTile.vue'
 import SmallTile from '../components/tiles/SmallTile.vue'
+import DeviceCard from '../components/tiles/DeviceCard.vue'
 import DeviceSheet from '../components/DeviceSheet.vue'
 import PanelEditor from '../components/PanelEditor.vue'
 import SceneEditor from '../components/SceneEditor.vue'
@@ -187,7 +188,7 @@ onBeforeUnmount(() => {
             <CurtainTile v-else-if="item.device.kind === 'curtain'" :device="item.device" class="span2" />
             <BathHeaterTile v-else-if="item.device.kind === 'bath_heater'" :device="item.device" class="span2" />
             <AirerTile v-else-if="item.device.kind === 'airer'" :device="item.device" class="span2" />
-            <SmallTile v-else :device="item.device" @detail="openDetail" />
+            <DeviceCard v-else :device="item.device" class="span2" @detail="openDetail" />
           </template>
         </div>
         <van-empty v-if="!layout.length" description="这个房间没有可显示的设备" />
@@ -395,12 +396,13 @@ h1 {
   padding: 16px 4px 0;
 }
 
+/* Wider screens (tablets on the wall included) fit as many columns as the width allows. */
 @media (min-width: 640px) {
   .grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   }
   .small-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   }
 }
 @media (min-width: 900px) {
@@ -409,14 +411,23 @@ h1 {
   }
   .layout {
     padding: 0;
+  }
+  .grid {
+    gap: 16px;
+  }
+  .side-col {
+    padding-top: 10px;
+  }
+  h1 {
+    font-size: 34px;
+  }
+}
+@media (min-width: 1280px) {
+  .layout {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 300px;
     gap: 28px;
     align-items: start;
-  }
-  .grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 16px;
   }
   .side-col {
     position: sticky;
@@ -425,14 +436,6 @@ h1 {
   }
   .small-grid {
     grid-template-columns: 1fr;
-  }
-  h1 {
-    font-size: 34px;
-  }
-}
-@media (min-width: 1200px) {
-  .grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 

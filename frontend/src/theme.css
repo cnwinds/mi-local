@@ -25,6 +25,7 @@
   --heat: #f26b2a;
   --heat-soft: #ffeee3;
   --heat-glow: linear-gradient(145deg, #ffe6d6 0%, #fff4ec 55%, #ffffff 100%);
+  --accent-glow: linear-gradient(145deg, #e3e8ff 0%, #f3f5ff 55%, #ffffff 100%);
   --green: #1fb66a;
   --danger: #ec4141;
 
@@ -104,6 +105,7 @@
     --cool-glow: linear-gradient(145deg, rgba(42, 149, 245, 0.3) 0%, rgba(42, 149, 245, 0.1) 55%, #1a1d24 100%);
     --heat-soft: rgba(242, 107, 42, 0.18);
     --heat-glow: linear-gradient(145deg, rgba(242, 107, 42, 0.3) 0%, rgba(242, 107, 42, 0.1) 55%, #1a1d24 100%);
+    --accent-glow: linear-gradient(145deg, rgba(111, 134, 255, 0.28) 0%, rgba(111, 134, 255, 0.08) 55%, #1a1d24 100%);
     --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow-2: 0 10px 30px rgba(0, 0, 0, 0.4);
     --shadow-warm: 0 8px 24px rgba(247, 168, 35, 0.25);

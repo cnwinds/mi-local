@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
-import { showToast } from 'vant'
-import { api, type Device } from '../api'
-import { deviceList, devices, gatewayName, loadDevices, loadRules, onHubEvent, rooms, rules } from '../store'
+import type { Device } from '../api'
+import { deviceList, devices, gatewayName, loadRules, onHubEvent, rooms, rules } from '../store'
 import BindingEditor from '../components/BindingEditor.vue'
-import { BatteryMedium, ChevronDown, ChevronRight, ChevronUp, Hand, Pencil, Plus, ToggleRight } from 'lucide-vue-next'
+import DeviceSheet from '../components/DeviceSheet.vue'
+import { BatteryLow, BatteryMedium, ChevronDown, ChevronRight, ChevronUp, Hand, Plus, Settings2 } from 'lucide-vue-next'
 import DeviceIcon from '../components/DeviceIcon.vue'
 import PageHeader from '../components/PageHeader.vue'
-import { fullName, miHomeLabel } from '../naming'
+import { fullName } from '../naming'
 
-const MORE_EVENTS: [string, string][] = [['double_click', '双击'], ['long_click_press', '长按']]
+const GESTURES: [string, string][] = [['click', '单击'], ['double_click', '双击'], ['long_click_press', '长按']]
 const ACTION_NAMES: Record<string, string> = { toggle: '切换', turn_on: '打开', turn_off: '关闭', open: '打开', close: '关闭', stop: '暂停', ring: '响', up: '升起', down: '降下' }
 
 const switches = computed(() => deviceList.value.filter((d) => d.kind === 'switch'))
@@ -19,23 +19,25 @@ const active = computed(() => switches.value.filter((d) => d.state.online).sort(
 const pending = computed(() => switches.value.filter((d) => !d.state.online).sort(byRoom))
 const showPending = ref(false)
 
+const groups = computed(() => {
+  const out: { room: string; items: Device[] }[] = []
+  for (const d of active.value) {
+    const g = out.find((x) => x.room === d.room) ?? out[out.push({ room: d.room, items: [] }) - 1]
+    g.items.push(d)
+  }
+  return out
+})
+
+/** The room is already the section title, so "儿童房吸顶灯开关" reads as "吸顶灯开关" inside it. */
+const shortName = (d: Device) => (d.name.startsWith(d.room) && d.name.length > d.room.length ? d.name.slice(d.room.length) : d.name)
+
 function binding(id: string, event: string) {
   const rule = rules.value.find((r) => r.trigger.device === id && r.trigger.event === event)
-  if (!rule) return null
-  const names = rule.actions.map((a) => (devices[a.device] ? fullName(devices[a.device]) : '?'))
+  if (!rule?.actions.length) return null
+  const targets = rule.actions.map((a) => devices[a.device]).filter(Boolean)
   const kinds = new Set(rule.actions.map((a) => a.action))
   const verb = kinds.size === 1 ? ACTION_NAMES[[...kinds][0]] ?? '' : ''
-  return { text: names.join('、'), verb }
-}
-
-function targets(id: string) {
-  const rule = rules.value.find((r) => r.trigger.device === id && r.trigger.event === 'click')
-  return (rule?.actions ?? []).map((a) => devices[a.device]).filter(Boolean)
-}
-const expanded = ref<Set<string>>(new Set())
-function toggleMore(id: string) {
-  if (expanded.value.has(id)) expanded.value.delete(id)
-  else expanded.value.add(id)
+  return { targets, verb }
 }
 
 const editSwitch = ref<string | null>(null)
@@ -44,8 +46,9 @@ function editBinding(id: string, event: string) {
   editSwitch.value = id
   editEvent.value = event
 }
+const settingsId = ref<string | null>(null)
 
-// Pressing a physical switch brings its card into view.
+// Pressing a physical switch brings its card into view and lights its key.
 const flashing = ref<string | null>(null)
 let flashTimer: number | undefined
 const stop = onHubEvent(async (e) => {
@@ -62,79 +65,50 @@ onUnmounted(() => {
   clearTimeout(flashTimer)
 })
 onMounted(loadRules)
-
-// Local rename: Mi Home cannot be written back to.
-const renaming = ref<Device | null>(null)
-const form = ref({ name: '', room: '' })
-function rename(d: Device) {
-  renaming.value = d
-  form.value = { name: d.name, room: d.room }
-}
-async function saveName() {
-  const d = renaming.value
-  if (!d) return
-  const name = form.value.name.trim()
-  await api.patchDevice(d.id, {
-    local_name: name && name !== d.cloud_name ? name : '',
-    local_room: form.value.room !== d.cloud_room ? form.value.room : '',
-    name_auto: false,
-  })
-  await loadDevices()
-  renaming.value = null
-  showToast('已保存')
-}
 </script>
 
 <template>
   <div class="switches">
     <PageHeader title="开关" :subtitle="`${active.length} 个无线开关 · 联动全部在本地运行，断网也能用`" />
-    <div class="note"><Hand :size="14" />按一下任意无线开关，它的卡片会自动出现在眼前</div>
+    <div class="note"><Hand :size="14" />按一下任意无线开关，它的卡片会亮起并滚到眼前</div>
 
-    <div class="list">
-      <div v-for="d in active" :id="`sw-${d.id}`" :key="d.id" class="sw card" :class="{ flash: flashing === d.id }">
-        <div class="head" @click="rename(d)">
-          <div class="sw-icon"><ToggleRight :size="20" /></div>
-          <div class="head-text">
-            <div class="name">{{ d.name }}</div>
-            <div class="meta">
-              {{ d.room }}
-              <span v-if="d.state.battery !== undefined" class="battery" :class="{ low: d.state.battery < 20 }">
-                <BatteryMedium :size="13" />{{ d.state.battery }}%
-              </span>
+    <section v-for="g in groups" :key="g.room" class="room">
+      <div class="section-label">{{ g.room }} · {{ g.items.length }}</div>
+      <div class="list">
+        <div v-for="d in g.items" :id="`sw-${d.id}`" :key="d.id" class="sw card" :class="{ flash: flashing === d.id }">
+          <div class="head">
+            <div class="key"><span /></div>
+            <div class="head-text">
+              <div class="name">{{ shortName(d) }}</div>
+              <div class="meta">
+                <span v-if="d.state.battery !== undefined" class="battery" :class="{ low: d.state.battery < 20 }">
+                  <component :is="d.state.battery < 20 ? BatteryLow : BatteryMedium" :size="14" />{{ d.state.battery }}%
+                </span>
+                <span v-if="flashing === d.id" class="live">刚刚按下</span>
+              </div>
             </div>
-            <div v-if="miHomeLabel(d)" class="meta mi">{{ miHomeLabel(d) }}</div>
+            <button class="settings" title="名称和房间" @click="settingsId = d.id"><Settings2 :size="17" /></button>
           </div>
-          <Pencil :size="15" class="edit" />
-        </div>
-        <div class="control" @click="editBinding(d.id, 'click')">
-          <div class="press-label">按一下</div>
-          <template v-if="targets(d.id).length">
-            <div class="chips">
-              <span v-for="t in targets(d.id)" :key="t.id" class="chip" :class="{ lit: t.state.power }">
-                <DeviceIcon :kind="t.kind" :model="t.model" :active="!!t.state.power" :size="24" />{{ fullName(t) }}
-              </span>
-            </div>
-            <ChevronRight :size="18" class="arrow" />
-          </template>
-          <button v-else class="choose"><Plus :size="16" />选择要控制的设备</button>
-        </div>
-        <button class="more-toggle" @click="toggleMore(d.id)">
-          <span>双击 / 长按{{ MORE_EVENTS.some(([e]) => binding(d.id, e)) ? ' · 已设置' : '' }}</span>
-          <component :is="expanded.has(d.id) ? ChevronUp : ChevronDown" :size="16" />
-        </button>
-        <template v-if="expanded.has(d.id)">
-          <div v-for="[event, label] in MORE_EVENTS" :key="event" class="row" @click="editBinding(d.id, event)">
-            <span class="event">{{ label }}</span>
-            <template v-if="binding(d.id, event)">
-              <span class="target">{{ binding(d.id, event)!.text }}</span>
-              <span class="verb">{{ binding(d.id, event)!.verb }}</span>
-            </template>
-            <span v-else class="target empty">未设置</span>
-            <ChevronRight :size="16" class="arrow" />
+
+          <div class="gestures">
+            <button v-for="[event, label] in GESTURES" :key="event" class="gesture" :class="{ primary: event === 'click' }"
+              @click="editBinding(d.id, event)">
+              <span class="g-label">{{ label }}</span>
+              <template v-if="binding(d.id, event)">
+                <span class="targets">
+                  <span v-for="t in binding(d.id, event)!.targets" :key="t.id" class="target" :class="{ lit: t.state.power }">
+                    <DeviceIcon :kind="t.kind" :model="t.model" :active="!!t.state.power" :size="22" />{{ fullName(t) }}
+                  </span>
+                </span>
+                <span v-if="event !== 'click' && binding(d.id, event)!.verb" class="verb">{{ binding(d.id, event)!.verb }}</span>
+              </template>
+              <span v-else class="empty"><Plus v-if="event === 'click'" :size="14" />{{ event === 'click' ? '选择要控制的设备' : '未设置' }}</span>
+              <ChevronRight :size="16" class="arrow" />
+            </button>
           </div>
-        </template>
+        </div>
       </div>
-    </div>
+    </section>
 
     <van-empty v-if="!active.length" :description="`还没有接入「${gatewayName}」的开关，到「设备」页添加`" />
 
@@ -145,27 +119,16 @@ async function saveName() {
       </button>
       <template v-if="showPending">
         <div class="pending-tip">这些开关还接在多模网关上，由米家控制。重新配对到「{{ gatewayName }}」后才能在这里设置。</div>
-        <div v-for="d in pending" :id="`sw-${d.id}`" :key="d.id" class="pending-item" :class="{ flash: flashing === d.id }">
-          <span>{{ d.name }}</span><span class="meta">{{ d.room }}</span>
+        <div class="pending-list card">
+          <div v-for="d in pending" :id="`sw-${d.id}`" :key="d.id" class="pending-item" :class="{ flash: flashing === d.id }">
+            <span>{{ d.name }}</span><span class="meta">{{ d.room }}</span>
+          </div>
         </div>
       </template>
     </div>
 
     <BindingEditor :switch-id="editSwitch" :event="editEvent" :simple="editEvent === 'click'" @close="editSwitch = null" />
-
-    <van-popup :show="!!renaming" position="bottom" round @update:show="(v: boolean) => !v && (renaming = null)">
-      <div class="rename" v-if="renaming">
-        <div class="rename-title">开关名称</div>
-        <van-cell-group inset>
-          <van-field v-model="form.name" label="名称" :placeholder="renaming.cloud_name" clearable />
-        </van-cell-group>
-        <div class="room-chips">
-          <span v-for="r in rooms" :key="r" class="room-chip" :class="{ on: form.room === r }" @click="form.room = r">{{ r }}</span>
-        </div>
-        <div class="rename-tip">米家里叫「{{ renaming.cloud_name }}」。这里的名字只在本应用显示，清空则恢复米家的名字。</div>
-        <div class="rename-actions"><van-button block round type="primary" @click="saveName">保存</van-button></div>
-      </div>
-    </van-popup>
+    <DeviceSheet :device-id="settingsId" @close="settingsId = null" />
   </div>
 </template>
 
@@ -176,38 +139,57 @@ async function saveName() {
   gap: 6px;
   font-size: 13px;
   color: var(--text-3);
-  padding: 0 20px 14px;
+  padding: 0 20px 6px;
+}
+.room {
+  padding: 0 16px;
 }
 .list {
   display: grid;
   gap: 12px;
-  padding: 0 16px;
 }
 .sw {
-  padding: 4px 16px;
+  padding: 14px;
   transition: box-shadow 0.3s, background 0.3s;
 }
 .flash {
-  background: var(--accent-soft);
   box-shadow: 0 0 0 2px var(--accent), var(--shadow-2);
 }
 .head {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 0;
-  cursor: pointer;
+  padding: 0 2px 12px;
 }
-.sw-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 13px;
+/* A drawing of the physical wireless switch; it lights up when pressed. */
+.key {
   flex: none;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  background: linear-gradient(160deg, var(--surface) 0%, var(--surface-2) 100%);
+  box-shadow: inset 0 0 0 1px var(--line), 0 3px 8px rgba(17, 24, 39, 0.08);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--accent-soft);
-  color: var(--accent);
+  transition: all 0.25s;
+}
+.key span {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  box-shadow: inset 0 1px 2px rgba(17, 24, 39, 0.12);
+  transition: all 0.25s;
+}
+.flash .key {
+  background: var(--accent);
+  transform: scale(0.94);
+  box-shadow: 0 6px 18px rgba(75, 103, 245, 0.4);
+}
+.flash .key span {
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
 }
 .head-text {
   flex: 1;
@@ -216,126 +198,133 @@ async function saveName() {
 .name {
   font-size: 16px;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .meta {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 2px;
+  margin-top: 3px;
   font-size: 12px;
   color: var(--text-3);
-}
-.meta.mi {
-  display: block;
 }
 .battery {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
 }
 .battery.low {
   color: var(--danger);
 }
-.edit {
-  color: var(--text-3);
-  flex: none;
+.live {
+  color: var(--accent-text);
+  font-weight: 600;
 }
-.control {
+.settings {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-3);
+  background: var(--surface-2);
+}
+.gestures {
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.gesture {
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px;
-  margin-bottom: 4px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  cursor: pointer;
+  min-height: 44px;
+  padding: 6px 12px;
+  text-align: left;
+  font-size: 13px;
+  transition: background 0.15s;
 }
-.press-label {
+.gesture + .gesture {
+  border-top: 1px solid var(--line);
+}
+.gesture:active {
+  background: var(--surface-3);
+}
+.gesture.primary {
+  min-height: 52px;
+}
+.g-label {
   flex: none;
+  width: 30px;
   font-size: 12px;
   color: var(--text-3);
-  writing-mode: horizontal-tb;
 }
-.chips {
+.primary .g-label {
+  color: var(--text-2);
+  font-weight: 600;
+}
+.targets {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
-.chip {
+.target {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
-  background: var(--surface);
-  border-radius: 10px;
+  max-width: 100%;
   padding: 3px 10px 3px 3px;
-}
-.chip.lit {
-  background: var(--warm-soft);
-}
-.choose {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  height: 34px;
   border-radius: 10px;
-  color: var(--accent);
-  font-size: 14px;
-  font-weight: 500;
-  box-shadow: inset 0 0 0 1.5px var(--accent);
-}
-.arrow {
-  color: var(--text-3);
-  flex: none;
-}
-.more-toggle {
-  width: 100%;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 12px;
-  color: var(--text-3);
-  padding: 10px 0;
-}
-.row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 0;
-  font-size: 14px;
-  border-top: 1px solid var(--line);
-  cursor: pointer;
-}
-.event {
-  color: var(--text-3);
-  width: 32px;
-  flex: none;
-}
-.target {
-  flex: 1;
-  min-width: 0;
+  background: var(--surface);
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
-.target.empty {
+.gesture:not(.primary) .target {
+  background: transparent;
+  padding: 0;
+}
+.gesture:not(.primary) .target :deep(.device-icon) {
+  display: none;
+}
+.target.lit {
+  background: var(--warm-soft);
+}
+.gesture:not(.primary) .target.lit {
+  background: transparent;
+}
+.empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   color: var(--text-3);
 }
+.primary .empty {
+  color: var(--accent-text);
+  font-weight: 500;
+}
 .verb {
-  font-size: 12px;
+  flex: none;
+  font-size: 11px;
   color: var(--accent-text);
   background: var(--accent-soft);
   border-radius: 6px;
   padding: 1px 6px;
 }
-.verb:empty {
-  display: none;
+.arrow {
+  flex: none;
+  color: var(--text-3);
 }
 .pending {
-  margin: 8px 16px 16px;
+  margin: 16px;
 }
 .pending-head {
   width: 100%;
@@ -348,45 +337,39 @@ async function saveName() {
   color: var(--text-3);
   padding: 0 4px 8px;
 }
+.pending-list {
+  padding: 2px 16px;
+}
 .pending-item {
   display: flex;
   justify-content: space-between;
-  background: var(--surface);
-  border-radius: var(--radius-sm);
-  padding: 12px 16px;
-  margin-bottom: 8px;
+  padding: 12px 0;
   font-size: 14px;
   color: var(--text-2);
-  transition: box-shadow 0.3s;
+  transition: color 0.3s;
 }
-.rename {
-  padding: 20px 0 calc(24px + env(safe-area-inset-bottom));
+.pending-item + .pending-item {
+  border-top: 1px solid var(--line);
 }
-.rename-title {
-  text-align: center;
+.pending-item.flash {
+  box-shadow: none;
+  color: var(--accent-text);
   font-weight: 600;
-  font-size: 16px;
-  margin-bottom: 16px;
 }
-.room-chips {
-  padding: 16px 16px 0;
-}
-.rename-tip {
-  font-size: 12px;
-  color: var(--text-3);
-  padding: 12px 32px 0;
-}
-.rename-actions {
-  padding: 20px 16px 0;
+@media (min-width: 640px) {
+  .list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
 }
 @media (min-width: 900px) {
   .note {
-    padding: 0 0 18px;
+    padding: 0 0 6px;
+  }
+  .room {
+    padding: 0;
   }
   .list {
-    padding: 0;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: start;
     gap: 16px;
   }
   .pending {
@@ -399,4 +382,3 @@ async function saveName() {
   }
 }
 </style>
-

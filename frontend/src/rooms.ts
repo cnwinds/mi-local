@@ -1,11 +1,16 @@
 import { computed } from 'vue'
 import type { AcMode, Device, PanelItem, PanelSize, RuleAction } from './api'
-import { deviceList, panels, rooms, sendCommand } from './store'
+import { deviceFields, deviceList, ensureFields, panels, rooms, sendCommand } from './store'
+import { summarize } from './miot'
 
 /** Wireless switches and the gateway are inputs, not things to operate from a panel. */
 const PANEL_KINDS = new Set(['light', 'ac', 'curtain', 'bath_heater', 'airer', 'plug', 'doorbell', 'other'])
 const LARGE_KINDS = new Set(['light', 'ac', 'curtain', 'bath_heater', 'airer'])
 const KIND_ORDER = ['light', 'ac', 'bath_heater', 'curtain', 'airer', 'plug', 'doorbell', 'other']
+
+/** Appliances get a full card once they report something worth showing; offline ones stay compact. */
+const isLarge = (d: Device) =>
+  LARGE_KINDS.has(d.kind) || (!!d.state.online && (d.kind === 'plug' || (d.kind === 'other' && !!d.state.props)))
 
 export const AC_MODE_NAMES: Record<AcMode, string> = { cool: '制冷', heat: '制热', dry: '除湿', fan: '送风', auto: '自动' }
 
@@ -22,7 +27,7 @@ export function panelLayout(room: string): (PanelItem & { device: Device })[] {
   const added = list
     .filter((d) => !savedIds.has(d.id))
     .sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || Number(!!b.state.online) - Number(!!a.state.online))
-    .map((d) => ({ id: d.id, size: (LARGE_KINDS.has(d.kind) ? 'large' : 'small') as PanelSize }))
+    .map((d) => ({ id: d.id, size: (isLarge(d) ? 'large' : 'small') as PanelSize }))
   return [...saved, ...added].map((item) => ({ ...item, device: byId.get(item.id)! }))
 }
 
@@ -57,10 +62,36 @@ export function roomSummary(room: string): string[] {
   }
   const curtains = list.filter((d) => d.kind === 'curtain' && online(d))
   if (curtains.length) parts.push(curtains.some((c) => (c.state.position ?? 0) > 5) ? '窗帘开' : '窗帘关')
+  for (const d of list.filter((d) => d.kind === 'other' && online(d) && d.state.power)) parts.push(`${d.name}运行中`)
+  if (!parts.length && list.length) parts.push(`${list.filter(online).length}/${list.length} 台设备在线`)
   return parts
 }
 
 export const roomActive = (room: string) => roomDevices(room).some(isRunning)
+
+/** One line of status for lists and compact tiles. */
+export function deviceStatus(d: Device): string {
+  const s = d.state
+  if (!s.online) return '离线'
+  switch (d.kind) {
+    case 'light':
+      return s.power ? `亮度 ${s.brightness}%` : '关闭'
+    case 'plug':
+      return s.power ? `开启 · ${s.load_power ?? 0} W` : '关闭'
+    case 'curtain':
+      return `打开 ${s.position ?? 0}%`
+    case 'ac':
+      return s.power ? `${AC_MODE_NAMES[s.mode ?? 'auto']} ${s.target_temp}°` : '关闭'
+    case 'switch':
+      return s.battery !== undefined ? `电量 ${s.battery}%` : '在线'
+    case 'doorbell':
+      return '点按响铃'
+    case 'airer':
+      return s.light ? '照明开' : '在线'
+  }
+  if (s.props) ensureFields(d.id)
+  return summarize(deviceFields[d.id] ?? [], s.props) || (s.power === undefined ? '在线' : s.power ? '开启' : '关闭')
+}
 
 /** Lights act as one: any on turns all off, otherwise all on. */
 export function toggleLights(list: Device[]) {

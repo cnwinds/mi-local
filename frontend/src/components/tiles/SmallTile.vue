@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { computed, watchEffect } from 'vue'
+import { computed } from 'vue'
 import { showToast } from 'vant'
 import type { Device } from '../../api'
-import { deviceFields, ensureFields, sendCommand } from '../../store'
-import { summarize } from '../../miot'
-import { AC_MODE_NAMES } from '../../rooms'
+import { sendCommand } from '../../store'
+import { deviceStatus } from '../../rooms'
 import DeviceIcon from '../DeviceIcon.vue'
 
 // Compact tile: one tap does the device's main thing, anything else opens the detail sheet.
@@ -15,31 +14,7 @@ const s = computed(() => props.device.state)
 const online = computed(() => !!s.value.online)
 const active = computed(() => online.value && !!s.value.power)
 
-const status = computed(() => {
-  if (!online.value) return '离线'
-  switch (props.device.kind) {
-    case 'light':
-      return s.value.power ? `${s.value.brightness}%` : '关闭'
-    case 'plug':
-      return s.value.power ? `${s.value.load_power ?? 0} W` : '关闭'
-    case 'curtain':
-      return `打开 ${s.value.position ?? 0}%`
-    case 'ac':
-      return s.value.power ? `${AC_MODE_NAMES[s.value.mode ?? 'auto']} ${s.value.target_temp}°` : '关闭'
-    case 'doorbell':
-      return '点按响铃'
-    default:
-      return (
-        summarize(fields.value, s.value.props) ||
-        (s.value.power === undefined ? '在线' : s.value.power ? '开启' : '关闭')
-      )
-  }
-})
-
-const fields = computed(() => deviceFields[props.device.id] ?? [])
-watchEffect(() => {
-  if (props.device.kind === 'other' && s.value.props) ensureFields(props.device.id)
-})
+const status = computed(() => deviceStatus(props.device))
 
 function tap() {
   const d = props.device
