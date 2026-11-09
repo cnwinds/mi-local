@@ -61,7 +61,7 @@ const sections = computed<{ title: string; items: Option[] }[]>(() => [
         key: 'zigbee',
         icon: Router,
         title: '网关子设备',
-        desc: gateway.value?.configured ? '无线开关、窗帘电机、插座、传感器，让网关进入配对模式后按设备上的配对键' : '先在「设备」页配置网关',
+        desc: gateway.value?.configured ? '无线开关、窗帘电机、插座、传感器，让网关进入配对模式后按设备上的配对键' : '先在设备列表的「网关」里完成配置',
         disabled: !gateway.value?.configured,
         run: () => (showPairing.value = true),
       },

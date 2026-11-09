@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import type { Device } from '../api'
-import { EVENT_NAMES, deviceList, devices, events, loadEvents } from '../store'
+import { EVENT_NAMES, deviceList, devices, events, gateway, loadEvents } from '../store'
 import { deviceStatus } from '../rooms'
 import CloudCard from '../components/CloudCard.vue'
 import DeviceIcon from '../components/DeviceIcon.vue'
 import DeviceSheet from '../components/DeviceSheet.vue'
-import GatewayCard from '../components/gateway/GatewayCard.vue'
+import GatewayRow from '../components/gateway/GatewayRow.vue'
 import PageHeader from '../components/PageHeader.vue'
 import VoiceCard from '../components/VoiceCard.vue'
 import AddDeviceSheet from '../components/add/AddDeviceSheet.vue'
@@ -41,13 +41,16 @@ const timeFmt = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-d
       <button class="add-btn" @click="showAdd = true"><Plus :size="18" :stroke-width="2.4" />添加设备</button>
     </PageHeader>
     <div class="top-cards">
-      <GatewayCard @edit="edit" />
       <CloudCard />
       <VoiceCard />
     </div>
     <van-tabs v-model:active="tab" line-width="18px" class="tabs">
       <van-tab title="设备管理" name="devices">
         <div class="groups">
+          <section v-if="gateway" class="group">
+            <div class="section-label">网关</div>
+            <div class="group-list card"><GatewayRow @edit="edit" /></div>
+          </section>
           <section v-for="g in grouped" :key="g.kind" class="group">
             <div class="section-label">{{ g.label }} · {{ g.items.length }}</div>
             <div class="group-list card">
