@@ -61,7 +61,7 @@ function eventTime(ts: number) {
       <CloudCard />
       <VoiceCard />
     </div>
-    <van-tabs v-model:active="tab" line-width="calc((100% - 8px) / 3)" duration="0.35" class="tabs">
+    <van-tabs v-model:active="tab" class="tabs">
       <van-tab title="设备管理" name="devices">
         <div class="groups">
           <section v-if="gateway" class="group">
@@ -131,45 +131,66 @@ function eventTime(ts: number) {
   display: none;
 }
 .tabs {
-  margin-top: 8px;
+  --tab-bg: color-mix(in srgb, var(--accent) 8%, transparent);
+  margin: 8px 16px 0;
 }
 .tabs :deep(.van-tabs__wrap) {
   height: auto;
-  padding: 4px 16px 8px;
+  overflow: visible;
   background: transparent;
 }
 .tabs :deep(.van-tabs__nav) {
-  position: relative;
-  height: 38px;
-  padding: 4px;
-  box-sizing: border-box;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--text) 6%, transparent);
-}
-.tabs :deep(.van-tab) {
-  z-index: 1;
-  border-radius: 9px;
-  font-size: 14px;
-  color: var(--text-2);
-  transition: color 0.25s;
-}
-.tabs :deep(.van-tab--active) {
-  color: var(--text);
-  font-weight: 600;
+  height: 42px;
+  padding: 0;
+  background: transparent;
 }
 .tabs :deep(.van-tabs__line) {
-  top: 4px;
-  bottom: 4px;
-  left: 0;
-  z-index: 0;
-  height: auto;
-  border-radius: 9px;
-  background: var(--surface);
-  box-shadow: var(--shadow-1), 0 0 0 1px color-mix(in srgb, var(--text) 5%, transparent);
-  transition-timing-function: cubic-bezier(0.3, 1.3, 0.5, 1);
+  display: none;
 }
-.groups {
-  padding: 0 16px;
+.tabs :deep(.van-tab) {
+  position: relative;
+  border-radius: 14px 14px 0 0;
+  font-size: 14px;
+  color: var(--text-2);
+  transition: color 0.2s, background-color 0.2s;
+}
+.tabs :deep(.van-tab--active) {
+  color: var(--accent);
+  font-weight: 600;
+  background: var(--tab-bg);
+}
+.tabs :deep(.van-tab--active)::before,
+.tabs :deep(.van-tab--active)::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+}
+.tabs :deep(.van-tab--active:not(:first-child))::before {
+  left: -14px;
+  background: radial-gradient(circle at 0 0, transparent 14px, var(--tab-bg) 14.5px);
+}
+.tabs :deep(.van-tab--active:not(:nth-last-child(2)))::after {
+  right: -14px;
+  background: radial-gradient(circle at 100% 0, transparent 14px, var(--tab-bg) 14.5px);
+}
+.tabs :deep(.van-tabs__content) {
+  padding: 12px 12px 16px;
+  border-radius: 18px;
+  background: var(--tab-bg);
+}
+.tabs:has(.van-tab:first-child.van-tab--active) :deep(.van-tabs__content) {
+  border-top-left-radius: 0;
+}
+.tabs:has(.van-tab:nth-last-child(2).van-tab--active) :deep(.van-tabs__content) {
+  border-top-right-radius: 0;
+}.tabs :deep(.stats) {
+  padding-left: 0;
+  padding-right: 0;
+}
+.events {
+  margin: 0;
 }
 .group-list {
   padding: 2px 0;
@@ -243,7 +264,7 @@ function eventTime(ts: number) {
 .tip {
   font-size: 12px;
   color: var(--text-3);
-  padding: 12px 20px 8px;
+  padding: 0 4px 10px;
 }
 @media (min-width: 900px) {
   .top-cards {
@@ -251,17 +272,16 @@ function eventTime(ts: number) {
     grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
     align-items: stretch;
   }
+  .tabs {
+    margin: 8px 0 0;
+  }
   .groups {
-    padding: 0;
     columns: 2;
     column-gap: 20px;
   }
   .group {
     break-inside: avoid;
     padding-top: 1px;
-  }
-  .events {
-    margin: 0;
   }
 }
 </style>
