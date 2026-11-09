@@ -9,6 +9,7 @@ import CurtainTile from './tiles/CurtainTile.vue'
 import BathHeaterTile from './tiles/BathHeaterTile.vue'
 import AirerTile from './tiles/AirerTile.vue'
 import MiotPanel from './MiotPanel.vue'
+import LockPanel from './LockPanel.vue'
 import DeviceSettings from './DeviceSettings.vue'
 
 const props = defineProps<{ deviceId: string | null }>()
@@ -98,7 +99,8 @@ function cmd(action: string, value?: unknown, optimistic?: Record<string, unknow
         </template>
 
         <div v-if="s.online && device.kind === 'plug'" class="row-label">当前功率 <span class="num">{{ s.load_power ?? 0 }} W</span></div>
-        <div v-if="!s.online" class="tip">设备离线，暂时连不上</div>
+        <LockPanel v-if="s.online && device.kind === 'lock'" :device="device" />
+        <div v-if="!s.online" class="tip">{{ device.kind === 'lock' ? '连不上鹿客云。如果一直这样，可能是令牌过期了，请到「设备」页重新接入' : '设备离线，暂时连不上' }}</div>
         <MiotPanel v-else-if="s.props" :device="device" />
         <div v-else-if="device.kind === 'other'" class="tip">这台设备没有公开的功能说明，暂时只能查看在线状态</div>
       </template>

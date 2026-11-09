@@ -1,5 +1,5 @@
 export type Kind =
-  | 'light' | 'plug' | 'curtain' | 'switch' | 'doorbell' | 'ac' | 'bath_heater' | 'airer' | 'other' | 'gateway'
+  | 'light' | 'plug' | 'curtain' | 'switch' | 'doorbell' | 'ac' | 'bath_heater' | 'airer' | 'lock' | 'other' | 'gateway'
 
 export type AcMode = 'cool' | 'heat' | 'dry' | 'fan' | 'auto'
 
@@ -32,6 +32,11 @@ export interface DeviceState {
   blow?: boolean
   ventilation?: boolean
   motor?: 'up' | 'down' | 'stop'
+  // lock (read-only)
+  door?: 'open' | 'closed' | null
+  lock_online?: boolean
+  last_event?: string
+  last_event_ts?: number
   // any device with a MIoT spec, keyed by DeviceField.key
   props?: Record<string, PropValue>
 }
@@ -228,6 +233,8 @@ export const api = {
   deleteScene: (id: string) => request<unknown>('DELETE', `/scenes/${id}`),
   runScene: (id: string) => request<unknown>('POST', `/scenes/${id}/run`),
   setupMidea: (account: string, password: string) => request<Device[]>('POST', '/midea/setup', { account, password }),
+  lockin: () => request<{ configured: boolean }>('GET', '/lockin'),
+  setupLockin: (access_token: string) => request<Device[]>('POST', '/lockin/setup', { access_token }),
   voice: () => request<VoiceStatus>('GET', '/voice'),
   setVoice: (enabled: boolean) => request<VoiceStatus>('PUT', '/voice', { enabled }),
 }

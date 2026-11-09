@@ -4,9 +4,9 @@ import { deviceFields, deviceList, ensureFields, panels, rooms, sendCommand } fr
 import { summarize } from './miot'
 
 /** Wireless switches and the gateway are inputs, not things to operate from a panel. */
-const PANEL_KINDS = new Set(['light', 'ac', 'curtain', 'bath_heater', 'airer', 'plug', 'doorbell', 'other'])
-const LARGE_KINDS = new Set(['light', 'ac', 'curtain', 'bath_heater', 'airer'])
-const KIND_ORDER = ['light', 'ac', 'bath_heater', 'curtain', 'airer', 'plug', 'doorbell', 'other']
+const PANEL_KINDS = new Set(['light', 'ac', 'curtain', 'bath_heater', 'airer', 'lock', 'plug', 'doorbell', 'other'])
+const LARGE_KINDS = new Set(['light', 'ac', 'curtain', 'bath_heater', 'airer', 'lock'])
+const KIND_ORDER = ['lock', 'light', 'ac', 'bath_heater', 'curtain', 'airer', 'plug', 'doorbell', 'other']
 
 /** Appliances get a full card once they report something worth showing; offline ones stay compact. */
 const isLarge = (d: Device) =>
@@ -46,6 +46,7 @@ export const isRunning = (d: Device) =>
 export function roomSummary(room: string): string[] {
   const list = roomDevices(room)
   const parts: string[] = []
+  for (const lock of list.filter((d) => d.kind === 'lock' && online(d) && d.state.door === 'open')) parts.push(`${lock.name}开着`)
   const lights = list.filter((d) => d.kind === 'light')
   if (lights.length) {
     const on = lights.filter((d) => online(d) && d.state.power).length
@@ -69,6 +70,16 @@ export function roomSummary(room: string): string[] {
 
 export const roomActive = (room: string) => roomDevices(room).some(isRunning)
 
+/** "3分钟前 " style prefix for event times, empty when unknown. */
+export function sinceText(ts?: number): string {
+  if (!ts) return ''
+  const minutes = Math.max(0, Math.round((Date.now() / 1000 - ts) / 60))
+  if (minutes < 1) return '刚刚 '
+  if (minutes < 60) return `${minutes}分钟前 `
+  if (minutes < 24 * 60) return `${Math.round(minutes / 60)}小时前 `
+  return `${Math.round(minutes / 1440)}天前 `
+}
+
 /** One line of status for lists and compact tiles. */
 export function deviceStatus(d: Device): string {
   const s = d.state
@@ -86,6 +97,10 @@ export function deviceStatus(d: Device): string {
       return s.battery !== undefined ? `电量 ${s.battery}%` : '在线'
     case 'doorbell':
       return '点按响铃'
+    case 'lock': {
+      const door = s.door === 'open' ? '门开着' : s.door === 'closed' ? '门已关' : '在线'
+      return s.battery !== undefined && s.battery !== null ? `${door} · 电量 ${s.battery}%` : door
+    }
     case 'airer':
       return s.light ? '照明开' : '在线'
   }

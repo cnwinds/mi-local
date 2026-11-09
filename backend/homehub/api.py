@@ -318,6 +318,25 @@ async def midea_setup(login: MideaLogin):
         raise HTTPException(502, f"接入失败：{e}")
 
 
+class LockinLogin(BaseModel):
+    access_token: str = Field(min_length=20)
+
+
+@app.get("/api/lockin")
+def lockin_status():
+    return {"configured": hub.lockin.configured}
+
+
+@app.post("/api/lockin/setup")
+async def lockin_setup(login: LockinLogin):
+    try:
+        return await hub.setup_lockin(login.access_token.strip())
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"连不上鹿客云：{e}")
+
+
 class VoiceConfig(BaseModel):
     enabled: bool
 

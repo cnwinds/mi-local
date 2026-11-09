@@ -9,6 +9,7 @@ import DeviceSheet from '../components/DeviceSheet.vue'
 import GatewayCard from '../components/gateway/GatewayCard.vue'
 import PageHeader from '../components/PageHeader.vue'
 import VoiceCard from '../components/VoiceCard.vue'
+import LockinCard from '../components/LockinCard.vue'
 import { ChevronRight, EyeOff } from 'lucide-vue-next'
 
 const tab = ref('devices')
@@ -16,7 +17,7 @@ const detailId = ref<string | null>(null)
 
 onMounted(loadEvents)
 
-const GROUPS: [string, string][] = [['light', '灯'], ['switch', '无线开关'], ['curtain', '窗帘'], ['plug', '插座'], ['ac', '空调'], ['bath_heater', '浴霸'], ['airer', '晾衣架'], ['doorbell', '门铃'], ['other', '其他设备']]
+const GROUPS: [string, string][] = [['light', '灯'], ['switch', '无线开关'], ['curtain', '窗帘'], ['plug', '插座'], ['ac', '空调'], ['bath_heater', '浴霸'], ['airer', '晾衣架'], ['lock', '门锁'], ['doorbell', '门铃'], ['other', '其他设备']]
 const grouped = computed(() =>
   GROUPS.map(([kind, label]) => ({ kind, label, items: deviceList.value.filter((d) => d.kind === kind) })).filter((g) => g.items.length),
 )
@@ -40,6 +41,7 @@ const timeFmt = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-d
       <GatewayCard @edit="edit" />
       <CloudCard />
       <VoiceCard @edit="edit" />
+      <LockinCard @edit="edit" />
     </div>
     <van-tabs v-model:active="tab" line-width="18px" class="tabs">
       <van-tab title="设备管理" name="devices">

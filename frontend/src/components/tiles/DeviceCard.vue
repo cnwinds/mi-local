@@ -5,6 +5,7 @@ import { BellRing, ChevronRight, Minus, Plus, Power } from 'lucide-vue-next'
 import type { Device } from '../../api'
 import { sendCommand } from '../../store'
 import { cardLabel, cardModel, unitLabel } from '../../miot'
+import { sinceText } from '../../rooms'
 import { useMiot } from '../../useMiot'
 import DeviceIcon from '../DeviceIcon.vue'
 
@@ -18,14 +19,21 @@ const { fields, values, powerKey, on, set, num, step, togglePower } = useMiot(de
 const s = computed(() => props.device.state)
 const online = computed(() => !!s.value.online)
 const isPlug = computed(() => props.device.kind === 'plug')
+const isLock = computed(() => props.device.kind === 'lock')
 const hasPower = computed(() => online.value && (!!powerKey.value || isPlug.value))
 const powered = computed(() => (isPlug.value ? !!s.value.power : on.value))
-const active = computed(() => online.value && hasPower.value && powered.value)
+const active = computed(() => online.value && (isLock.value ? s.value.door === 'open' : hasPower.value && powered.value))
 
 const model = computed(() => cardModel(fields.value, values.value, powerKey.value))
 
 const metrics = computed(() => {
   if (isPlug.value) return online.value ? [{ label: '当前功率', value: String(s.value.load_power ?? 0), unit: 'W', text: false }] : []
+  if (isLock.value) {
+    const door = s.value.door === 'open' ? '开着' : s.value.door === 'closed' ? '已关' : '未知'
+    const list = [{ label: '门', value: door, unit: '', text: true }]
+    if (typeof s.value.battery === 'number') list.push({ label: '电量', value: String(s.value.battery), unit: '%', text: false })
+    return list
+  }
   return model.value.metrics.map((m) => {
     const hit = /^(-?[\d.]+)\s*(.*)$/.exec(m.text)
     return { label: m.field.name, value: hit ? hit[1] : m.text, unit: hit ? hit[2] : '', text: !hit }
@@ -34,6 +42,7 @@ const metrics = computed(() => {
 
 const status = computed(() => {
   if (!online.value) return '离线'
+  if (isLock.value) return s.value.last_event ? `${sinceText(s.value.last_event_ts)}${s.value.last_event}` : '只读'
   if (hasPower.value) return powered.value ? '已开启' : '已关闭'
   return '在线'
 })

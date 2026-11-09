@@ -15,7 +15,8 @@ from .miot_spec import load_fields
 from .drivers.miio_wifi import DRIVERS
 from .micloud import MiCloud
 from .rules import RuleEngine
-from .store import cloud_file, devices_file, panels_file, rules_file, scenes_file, settings_file
+from .drivers.lockin import LockinCloud, LockinLockDriver
+from .store import cloud_file, devices_file, lockin_file, panels_file, rules_file, scenes_file, settings_file
 from .voice import VoiceBridge
 
 log = logging.getLogger(__name__)
@@ -58,6 +59,7 @@ class Hub:
         # Gateways in the Mi Home account as of the last sync, so the user can pick one.
         self.cloud_gateways: dict[str, dict] = {}
         self.voice = VoiceBridge(self)
+        self.lockin = LockinCloud(lockin_file.load())
 
     async def start(self) -> None:
         self.lan_ip = os.environ.get("HUB_LAN_IP") or self.settings.get("lan_ip", "0.0.0.0")
@@ -197,6 +199,10 @@ class Hub:
             if record.get("model") not in CLOUD_DRIVERS:
                 return
             driver = CLOUD_DRIVERS[record["model"]](record, self.cloud)
+        elif driver_name == "lockin":
+            if not self.lockin.configured:
+                return
+            driver = LockinLockDriver(record, self.lockin, lambda event: self.emit_event(record["id"], event))
         elif driver_name == "midea":
             from .drivers.midea import MideaAcDriver
             driver = MideaAcDriver(record)
@@ -277,7 +283,9 @@ class Hub:
         self.update_state(device_id, state)
 
     def _gw_event(self, sid: str, model: str, event: str) -> None:
-        device_id = f"lumi.{sid}"
+        self.emit_event(f"lumi.{sid}", event)
+
+    def emit_event(self, device_id: str, event: str) -> None:
         entry = {"ts": time.time(), "device": device_id, "event": event}
         self.events.append(entry)
         self.broadcast({"type": "event", **entry})
@@ -484,6 +492,32 @@ class Hub:
             if old:
                 record.update({f: old[f] for f in LOCAL_FIELDS if f in old})
         self._apply_records(records)
+        self.broadcast({"type": "devices"})
+        return [self.public_device(r["id"]) for r in records]
+
+    # --- Lockin locks --------------------------------------------------------
+    async def setup_lockin(self, access_token: str) -> list[dict]:
+        locks = await LockinCloud({"access_token": access_token}).locks()
+        if not locks:
+            raise RuntimeError("这个鹿客账号下没有找到门锁")
+        self.lockin.data["access_token"] = access_token
+        lockin_file.save(self.lockin.data)
+        records = []
+        for lock in locks:
+            record = {
+                "id": f"lockin.{lock['uuid']}", "name": lock["name"], "room": UNASSIGNED, "kind": "lock",
+                "model": f"lockin.{lock['model']}".rstrip("."), "driver": "lockin", "lockin_uuid": lock["uuid"],
+                "hidden": False,
+            }
+            old = self.records.get(record["id"])
+            if old:
+                record.update({f: old[f] for f in LOCAL_FIELDS if f in old})
+            self.records[record["id"]] = record
+            self.states.setdefault(record["id"], {"online": False})
+            self._detach(record["id"])
+            self._attach(record)
+            records.append(record)
+        self.save_devices()
         self.broadcast({"type": "devices"})
         return [self.public_device(r["id"]) for r in records]
 

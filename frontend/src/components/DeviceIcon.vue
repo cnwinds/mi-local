@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, type Component } from 'vue'
 import {
-  AirVent, BellRing, Blinds, Box, CircleDot, CookingPot, Droplets, Fish, Heater, Lightbulb, Plug,
+  AirVent, BellRing, Blinds, Box, CircleDot, CookingPot, Droplets, Fish, Heater, Lightbulb, Lock, Plug,
   Router, Shirt, Speaker, WashingMachine, Wind,
 } from 'lucide-vue-next'
 import type { Kind } from '../api'
@@ -11,7 +11,7 @@ const props = defineProps<{ kind: Kind; model?: string; active?: boolean; tone?:
 
 const BY_KIND: Partial<Record<Kind, Component>> = {
   light: Lightbulb, curtain: Blinds, plug: Plug, switch: CircleDot, doorbell: BellRing, ac: AirVent,
-  bath_heater: Heater, airer: Shirt, gateway: Router,
+  bath_heater: Heater, airer: Shirt, gateway: Router, lock: Lock,
 }
 const BY_MODEL: [string, Component][] = [
   ['wifispeaker', Speaker], ['washer', WashingMachine], ['fishbowl', Fish], ['waterheater', Droplets],
@@ -26,7 +26,7 @@ const icon = computed(() => {
   }
   return BY_KIND[props.kind] ?? Box
 })
-const tone = computed(() => props.tone ?? ({ light: 'warm', bath_heater: 'heat', ac: 'cool' } as Record<string, string>)[props.kind] ?? 'accent')
+const tone = computed(() => props.tone ?? ({ light: 'warm', bath_heater: 'heat', ac: 'cool', lock: 'heat' } as Record<string, string>)[props.kind] ?? 'accent')
 const px = computed(() => props.size ?? 40)
 </script>
 

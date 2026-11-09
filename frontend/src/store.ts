@@ -38,6 +38,9 @@ export const EVENT_NAMES: Record<string, string> = {
   double_click: '双击',
   long_click_press: '长按',
   long_click_release: '长按松开',
+  unlock: '开锁',
+  door_open: '开门',
+  door_close: '关门',
 }
 
 export async function loadDevices() {
