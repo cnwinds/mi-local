@@ -113,6 +113,33 @@ export interface HubEvent {
   event: string
 }
 
+export interface Stats {
+  since: number
+  first: number | null
+  days: number
+  total_presses: number
+  press_types: Record<string, number>
+  total_turn_ons: number
+  total_doors: number
+  switches: { device: string; count: number }[]
+  usage: { device: string; on_seconds: number; turn_ons: number; rate: number }[]
+  /** [weekday 0 = Monday][hour] */
+  heatmap: number[][]
+  peak_hour: number | null
+  /** day: local midnight as a unix timestamp */
+  daily: { day: number; presses: number; turn_ons: number; doors: number }[]
+}
+
+export interface LockinCapture {
+  active: boolean
+  port: number
+  remaining: number
+  seen_any: boolean
+  seen_lockin: boolean
+  done: boolean
+  error: string
+}
+
 export interface SyncSummary {
   added: string[]
   renamed: string[]
@@ -213,7 +240,10 @@ export const api = {
   updateRule: (id: string, rule: Rule) => request<Rule>('PUT', `/rules/${id}`, rule),
   deleteRule: (id: string) => request<unknown>('DELETE', `/rules/${id}`),
   runRule: (id: string) => request<unknown>('POST', `/rules/${id}/run`),
-  events: () => request<HubEvent[]>('GET', '/events'),
+  events: (before?: number, limit = 100) =>
+    request<{ total: number; items: HubEvent[] }>('GET', `/events?limit=${limit}${before ? `&before=${before}` : ''}`),
+  stats: (days: number | null) =>
+    request<Stats>('GET', `/stats?tz=${new Date().getTimezoneOffset()}${days ? `&days=${days}` : ''}`),
   cloud: () => request<CloudStatus>('GET', '/cloud'),
   cloudLogin: () => request<CloudLogin>('POST', '/cloud/login'),
   cloudSync: () => request<SyncSummary>('POST', '/cloud/sync'),
@@ -233,7 +263,8 @@ export const api = {
   deleteScene: (id: string) => request<unknown>('DELETE', `/scenes/${id}`),
   runScene: (id: string) => request<unknown>('POST', `/scenes/${id}/run`),
   setupMidea: (account: string, password: string) => request<Device[]>('POST', '/midea/setup', { account, password }),
-  lockin: () => request<{ configured: boolean }>('GET', '/lockin'),
+  lockin: () => request<{ configured: boolean; capture: LockinCapture }>('GET', '/lockin'),
+  captureLockin: (active: boolean) => request<LockinCapture>('POST', '/lockin/capture', { active }),
   setupLockin: (access_token: string) => request<Device[]>('POST', '/lockin/setup', { access_token }),
   voice: () => request<VoiceStatus>('GET', '/voice'),
   setVoice: (enabled: boolean) => request<VoiceStatus>('PUT', '/voice', { enabled }),

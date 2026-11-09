@@ -1,15 +1,18 @@
 import asyncio
+import io
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+import segno
+from fastapi import FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .hub import Hub
+from .lockin_capture import ca_pem
 from .store import panels_file, scenes_file
 
 hub = Hub()
@@ -324,7 +327,37 @@ class LockinLogin(BaseModel):
 
 @app.get("/api/lockin")
 def lockin_status():
-    return {"configured": hub.lockin.configured}
+    return {"configured": hub.lockin.configured, "capture": hub.lockin_capture.status()}
+
+
+class CaptureToggle(BaseModel):
+    active: bool
+
+
+@app.post("/api/lockin/capture")
+async def lockin_capture(body: CaptureToggle):
+    if body.active:
+        try:
+            await hub.lockin_capture.start()
+        except OSError as e:
+            raise HTTPException(500, f"代理端口打不开：{e}")
+    else:
+        await hub.lockin_capture.stop()
+    return hub.lockin_capture.status()
+
+
+@app.get("/api/lockin/ca.crt")
+async def lockin_ca():
+    pem = await asyncio.to_thread(ca_pem)
+    return Response(pem, media_type="application/x-x509-ca-cert",
+                    headers={"Content-Disposition": 'attachment; filename="mi-local-ca.crt"'})
+
+
+@app.get("/api/qr.svg")
+def qr_svg(text: str):
+    buf = io.BytesIO()
+    segno.make(text, error="m").save(buf, kind="svg", scale=6, border=2, dark="#14161b", light="#ffffff")
+    return Response(buf.getvalue(), media_type="image/svg+xml")
 
 
 @app.post("/api/lockin/setup")
@@ -355,8 +388,14 @@ def set_voice(config: VoiceConfig):
 
 
 @app.get("/api/events")
-def list_events():
-    return list(hub.events)
+async def list_events(before: float | None = None, limit: int = 100):
+    return await asyncio.to_thread(hub.history.events, before, min(max(limit, 1), 500))
+
+
+@app.get("/api/stats")
+async def stats(days: int | None = None, tz: int = 0):
+    kinds = {i: r.get("kind", "") for i, r in hub.records.items()}
+    return await asyncio.to_thread(hub.history.stats, days, tz, kinds)
 
 
 @app.websocket("/api/ws")

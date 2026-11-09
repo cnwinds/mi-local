@@ -18,7 +18,9 @@ import {
 export const devices = reactive<Record<string, Device>>({})
 export const rooms = ref<string[]>([])
 export const rules = ref<Rule[]>([])
+/** Newest first; older pages are fetched on demand. */
 export const events = ref<HubEvent[]>([])
+export const eventsTotal = ref(0)
 export const connected = ref(false)
 export const cloud = ref<CloudStatus | null>(null)
 export const pairing = ref<PairingStatus | null>(null)
@@ -94,7 +96,15 @@ export function ensureFields(id: string) {
 }
 
 export async function loadEvents() {
-  events.value = (await api.events()).reverse()
+  const page = await api.events()
+  events.value = page.items
+  eventsTotal.value = page.total
+}
+
+export async function loadOlderEvents() {
+  const last = events.value[events.value.length - 1]
+  if (!last) return
+  events.value = [...events.value, ...(await api.events(last.ts)).items]
 }
 
 export function onHubEvent(listener: EventListener) {
@@ -154,7 +164,8 @@ export function connect() {
       loadScenes()
     } else if (data.type === 'event') {
       const e: HubEvent = { ts: data.ts, device: data.device, event: data.event }
-      events.value = [e, ...events.value].slice(0, 2000)
+      events.value = [e, ...events.value]
+      eventsTotal.value += 1
       eventListeners.forEach((l) => l(e))
     }
   }

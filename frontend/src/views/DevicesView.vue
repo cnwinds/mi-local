@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import type { Device } from '../api'
-import { EVENT_NAMES, deviceList, devices, events, gateway, loadEvents } from '../store'
+import { EVENT_NAMES, deviceList, devices, events, eventsTotal, gateway, loadEvents, loadOlderEvents } from '../store'
 import { deviceStatus } from '../rooms'
 import CloudCard from '../components/CloudCard.vue'
 import DeviceIcon from '../components/DeviceIcon.vue'
@@ -10,14 +10,24 @@ import GatewayRow from '../components/gateway/GatewayRow.vue'
 import PageHeader from '../components/PageHeader.vue'
 import VoiceCard from '../components/VoiceCard.vue'
 import AddDeviceSheet from '../components/add/AddDeviceSheet.vue'
+import StatsPanel from '../components/StatsPanel.vue'
 import { ChevronRight, EyeOff, Plus } from 'lucide-vue-next'
 
 const tab = ref('devices')
 const detailId = ref<string | null>(null)
 const showAdd = ref(false)
-const eventLimit = ref(100)
+const loadingOlder = ref(false)
 
 onMounted(loadEvents)
+async function older() {
+  if (loadingOlder.value) return
+  loadingOlder.value = true
+  try {
+    await loadOlderEvents()
+  } finally {
+    loadingOlder.value = false
+  }
+}
 
 const GROUPS: [string, string][] = [['light', '灯'], ['switch', '无线开关'], ['curtain', '窗帘'], ['plug', '插座'], ['ac', '空调'], ['bath_heater', '浴霸'], ['airer', '晾衣架'], ['lock', '门锁'], ['doorbell', '门铃'], ['other', '其他设备']]
 const grouped = computed(() =>
@@ -75,14 +85,17 @@ function eventTime(ts: number) {
           </section>
         </div>
       </van-tab>
+      <van-tab title="统计" name="stats">
+        <StatsPanel v-if="tab === 'stats'" @edit="(id: string) => devices[id] && edit(devices[id])" />
+      </van-tab>
       <van-tab title="事件日志" name="events">
-        <div class="tip">记录无线开关按键和门锁开关门，保留最近 2000 条，重启也不会丢。</div>
+        <div class="tip">无线开关按键、门锁和开关门全部永久保存，共 {{ eventsTotal }} 条。</div>
         <van-cell-group inset class="events">
-          <van-cell v-for="(e, i) in events.slice(0, eventLimit)" :key="i" :title="devices[e.device]?.name ?? e.device" :value="EVENT_NAMES[e.event] ?? e.event"
+          <van-cell v-for="(e, i) in events" :key="i" :title="devices[e.device]?.name ?? e.device" :value="EVENT_NAMES[e.event] ?? e.event"
             :label="eventTime(e.ts)" @click="devices[e.device] && edit(devices[e.device])" is-link />
           <van-cell v-if="!events.length" title="暂无事件" />
-          <van-cell v-if="events.length > eventLimit" :title="`再显示 100 条（还有 ${events.length - eventLimit} 条）`" class="more"
-            @click="eventLimit += 100" />
+          <van-cell v-if="events.length < eventsTotal" :title="loadingOlder ? '加载中…' : `加载更早的记录（还有 ${eventsTotal - events.length} 条）`"
+            class="more" @click="older" />
         </van-cell-group>
       </van-tab>
     </van-tabs>

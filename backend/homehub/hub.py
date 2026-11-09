@@ -4,8 +4,6 @@ import logging
 import os
 import re
 import time
-from collections import deque
-
 import miio
 
 from .catalog import LOCAL_FIELDS, UNASSIGNED, gateway_record, merge, rooms_from_homes
@@ -16,7 +14,9 @@ from .drivers.miio_wifi import DRIVERS
 from .micloud import MiCloud
 from .rules import RuleEngine
 from .drivers.lockin import LockinCloud, LockinLockDriver
-from .store import (cloud_file, devices_file, events_file, lockin_file, panels_file, rules_file, scenes_file,
+from .history import History
+from .lockin_capture import LockinCapture
+from .store import (DATA_DIR, cloud_file, devices_file, events_file, lockin_file, panels_file, rules_file, scenes_file,
                     settings_file)
 from .voice import VoiceBridge
 
@@ -28,8 +28,7 @@ DRIVER_FIELDS = ("driver", "ip", "token", "sid", "midea_token", "device_id")
 CLOUD_SYNC_INTERVAL = 30 * 60
 DOORBELL_ID = "gw2.doorbell"
 GW_DRIVERS = ("gw2", "gw2bell")
-EVENT_HISTORY = 2000
-EVENT_SAVE_INTERVAL = 10
+USAGE_KINDS = {"light", "plug", "ac", "bath_heater", "other"}
 # Gateways that speak the LAN protocol on UDP 9898 once it is enabled in Mi Home.
 SUPPORTED_GATEWAYS = {"lumi.gateway.v2", "lumi.gateway.v3", "lumi.gateway.mieu01"}
 
@@ -47,8 +46,8 @@ class Hub:
         self.scenes: list[dict] = scenes_file.load()
         self.states: dict[str, dict] = {i: {"online": False} for i in self.records}
         self.drivers: dict = {}
-        self.events: deque = deque(events_file.load(), maxlen=EVENT_HISTORY)
-        self._events_dirty = False
+        self.history = History(DATA_DIR / "events.db")
+        self.history.import_events(events_file.load())
         self.subscribers: set[asyncio.Queue] = set()
         self.engine = RuleEngine(self)
         self.gateway: Gateway2 | None = None
@@ -64,6 +63,7 @@ class Hub:
         self.cloud_gateways: dict[str, dict] = {}
         self.voice = VoiceBridge(self)
         self.lockin = LockinCloud(lockin_file.load())
+        self.lockin_capture = LockinCapture(self.setup_lockin)
 
     async def start(self) -> None:
         self.lan_ip = os.environ.get("HUB_LAN_IP") or self.settings.get("lan_ip", "0.0.0.0")
@@ -73,12 +73,12 @@ class Hub:
         self._tasks.append(asyncio.create_task(self._cloud_loop()))
         self._tasks.append(asyncio.create_task(self._gateway_watch()))
         self._tasks.append(asyncio.create_task(self.voice.run()))
-        self._tasks.append(asyncio.create_task(self._events_saver()))
 
     async def stop(self) -> None:
         for task in [*self._tasks, *self._poll_tasks.values()]:
             task.cancel()
-        self._save_events()
+        await self.lockin_capture.stop()
+        self.history.close()
         if self.gateway:
             self.gateway.stop()
 
@@ -280,6 +280,16 @@ class Hub:
         if new != old:
             self.states[device_id] = new
             self.broadcast({"type": "state", "id": device_id, "state": new})
+            self._log_power(device_id, old, new)
+
+    def _log_power(self, device_id: str, old: dict, new: dict) -> None:
+        # Offline devices keep their last power value, so only transitions seen while online count.
+        record = self.records.get(device_id)
+        if not record or record.get("kind") not in USAGE_KINDS or "power" not in new or not new.get("online"):
+            return
+        was_on = bool(old.get("power")) if old.get("online") else None
+        if was_on is None or bool(new["power"]) != was_on:
+            self.history.add_power(time.time(), device_id, bool(new["power"]))
 
     # --- gateway 2 callbacks ---------------------------------------------
     def _gw_state(self, sid: str, model: str, state: dict) -> None:
@@ -293,8 +303,7 @@ class Hub:
 
     def emit_event(self, device_id: str, event: str) -> None:
         entry = {"ts": time.time(), "device": device_id, "event": event}
-        self.events.append(entry)
-        self._events_dirty = True
+        self.history.add_event(entry["ts"], device_id, event)
         self.broadcast({"type": "event", **entry})
         self.engine.handle_event(device_id, event)
 
@@ -543,17 +552,6 @@ class Hub:
 
     def save_devices(self) -> None:
         devices_file.save(list(self.records.values()))
-
-    async def _events_saver(self) -> None:
-        # Batched so a burst of key presses costs one write.
-        while True:
-            await asyncio.sleep(EVENT_SAVE_INTERVAL)
-            self._save_events()
-
-    def _save_events(self) -> None:
-        if self._events_dirty:
-            self._events_dirty = False
-            events_file.save(list(self.events))
 
     def save_rules(self) -> None:
         rules_file.save(self.rules)
