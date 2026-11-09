@@ -140,7 +140,6 @@ function eventTime(ts: number) {
 }
 .tabs :deep(.van-tabs__nav) {
   position: relative;
-  max-width: 480px;
   height: 38px;
   padding: 4px;
   box-sizing: border-box;
