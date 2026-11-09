@@ -28,8 +28,19 @@ const groups = computed(() => {
   return out
 })
 
-/** The room is already the section title, so "儿童房吸顶灯开关" reads as "吸顶灯开关" inside it. */
-const shortName = (d: Device) => (d.name.startsWith(d.room) && d.name.length > d.room.length ? d.name.slice(d.room.length) : d.name)
+// Gestures with an action are always shown; the rest wait behind "更多操作" until someone wants to set them.
+const expanded = ref(new Set<string>())
+function toggleExpanded(id: string) {
+  const next = new Set(expanded.value)
+  if (!next.delete(id)) next.add(id)
+  expanded.value = next
+}
+function shownGestures(id: string) {
+  const bound = GESTURES.filter(([e]) => binding(id, e))
+  if (expanded.value.has(id)) return GESTURES
+  return bound.length ? bound : GESTURES.slice(0, 1)
+}
+const unsetLabels = (id: string) => GESTURES.filter(([e]) => !binding(id, e) && e !== 'click').map(([, l]) => l)
 
 function binding(id: string, event: string) {
   const rule = rules.value.find((r) => r.trigger.device === id && r.trigger.event === event)
@@ -79,7 +90,7 @@ onMounted(loadRules)
           <div class="head">
             <div class="key"><span /></div>
             <div class="head-text">
-              <div class="name">{{ shortName(d) }}</div>
+              <div class="name">{{ d.name }}</div>
               <div class="meta">
                 <span v-if="d.state.battery !== undefined" class="battery" :class="{ low: d.state.battery < 20 }">
                   <component :is="d.state.battery < 20 ? BatteryLow : BatteryMedium" :size="14" />{{ d.state.battery }}%
@@ -91,7 +102,7 @@ onMounted(loadRules)
           </div>
 
           <div class="gestures">
-            <button v-for="[event, label] in GESTURES" :key="event" class="gesture" :class="{ primary: event === 'click' }"
+            <button v-for="[event, label] in shownGestures(d.id)" :key="event" class="gesture" :class="{ primary: event === 'click' }"
               @click="editBinding(d.id, event)">
               <span class="g-label">{{ label }}</span>
               <template v-if="binding(d.id, event)">
@@ -106,6 +117,10 @@ onMounted(loadRules)
               <ChevronRight :size="16" class="arrow" />
             </button>
           </div>
+          <button v-if="unsetLabels(d.id).length" class="more" @click="toggleExpanded(d.id)">
+            <template v-if="expanded.has(d.id)">收起<ChevronUp :size="14" /></template>
+            <template v-else><Plus :size="13" />{{ unsetLabels(d.id).join(' / ') }}</template>
+          </button>
         </div>
       </div>
     </section>
@@ -321,6 +336,14 @@ onMounted(loadRules)
 }
 .arrow {
   flex: none;
+  color: var(--text-3);
+}
+.more {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin: 10px 2px 0;
+  font-size: 12px;
   color: var(--text-3);
 }
 .pending {
