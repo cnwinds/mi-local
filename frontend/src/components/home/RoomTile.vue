@@ -159,7 +159,7 @@ function tap(d: Device) {
 
     <div class="body" @click.stop>
       <!-- Big tile: AC panel — mode dot cycles modes, −/+ set the temperature -->
-      <div v-if="size === 'l' && ac" class="ac" :class="[tone, { off: !acOn, offline: !ac.state.online }]">
+      <div v-if="size === 'l' && ac" class="ac-panel" :class="[tone, { off: !acOn, offline: !ac.state.online }]">
         <button class="mode" :disabled="!acOn" :title="ac.name" @click="cycleMode">
           <component :is="MODE_ICONS[acMode]" :size="18" :stroke-width="2.2" />
         </button>
@@ -297,7 +297,7 @@ header {
 }
 
 /* AC panel */
-.ac {
+.ac-panel {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -306,18 +306,18 @@ header {
   background: var(--surface-2);
   transition: background 0.3s;
 }
-.ac.cool {
+.ac-panel.cool {
   background: var(--cool-soft);
   color: var(--cool);
 }
-.ac.heat {
+.ac-panel.heat {
   background: var(--heat-soft);
   color: var(--heat);
 }
-.ac.off {
+.ac-panel.off {
   color: var(--text-3);
 }
-.ac.offline {
+.ac-panel.offline {
   opacity: 0.4;
 }
 .mode,
@@ -338,17 +338,17 @@ header {
 .mode > * {
   color: #fff;
 }
-.ac.off .mode {
+.ac-panel.off .mode {
   background: var(--surface);
 }
-.ac.off .mode > * {
+.ac-panel.off .mode > * {
   color: var(--text-3);
 }
 .step:disabled,
 .mode:disabled {
   cursor: default;
 }
-.ac.off .step {
+.ac-panel.off .step {
   opacity: 0.3;
 }
 .step:not(:disabled):active,
@@ -363,7 +363,7 @@ header {
   line-height: 1;
   color: var(--text);
 }
-.ac.off .target {
+.ac-panel.off .target {
   color: var(--text-3);
 }
 .target small {
@@ -378,7 +378,7 @@ header {
 .power.on {
   background: currentColor;
 }
-.ac .power.on {
+.ac-panel .power.on {
   color: inherit;
 }
 .power.on > * {
