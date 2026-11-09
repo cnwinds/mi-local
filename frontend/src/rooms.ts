@@ -108,6 +108,62 @@ export function deviceStatus(d: Device): string {
   return summarize(deviceFields[d.id] ?? [], s.props) || (s.power === undefined ? '在线' : s.power ? '开启' : '关闭')
 }
 
+export type RoomSize = 's' | 'm' | 'l'
+
+/** Home tile size from how much the room has to show: an AC and several devices earn the big tile. */
+export function roomSize(list: Device[]): RoomSize {
+  const count = list.filter((d) => d.kind !== 'doorbell').length
+  const hasAc = list.some((d) => d.kind === 'ac')
+  if ((hasAc && count >= 4) || count >= 7) return 'l'
+  if (hasAc || count >= 3) return 'm'
+  return 's'
+}
+
+const KIND_LABELS: Partial<Record<Device['kind'], string>> = {
+  light: '灯', ac: '空调', curtain: '窗帘', plug: '插座', bath_heater: '浴霸', airer: '晾衣架', lock: '门锁',
+}
+
+/** "卧室筒灯" in 卧室 → "筒灯"; falls back to the kind when nothing is left. */
+export function shortName(d: Device): string {
+  const rest = d.name.startsWith(d.room) ? d.name.slice(d.room.length).replace(/^[的\s]+/, '') : d.name
+  return rest || KIND_LABELS[d.kind] || d.name
+}
+
+/** Whether a device is "on" in the sense its tile should light up. */
+export function isActive(d: Device): boolean {
+  const s = d.state
+  if (!s.online) return false
+  if (d.kind === 'curtain') return (s.position ?? 0) > 5
+  if (d.kind === 'lock') return s.door === 'open'
+  if (d.kind === 'airer') return !!s.light
+  return !!s.power
+}
+
+/** One-tap action for a device chip, or null when the chip only opens details. */
+export function quickToggle(d: Device): (() => void) | null {
+  const s = d.state
+  if (!s.online) return null
+  switch (d.kind) {
+    case 'curtain': {
+      const open = (s.position ?? 0) <= 50
+      return () => sendCommand(d.id, open ? 'open' : 'close', undefined, { position: open ? 100 : 0 })
+    }
+    case 'light':
+    case 'plug':
+    case 'ac':
+    case 'bath_heater':
+      return () => sendCommand(d.id, s.power ? 'turn_off' : 'turn_on', undefined, { power: !s.power })
+    case 'other':
+      return s.power === undefined ? null : () => sendCommand(d.id, 'toggle', undefined, { power: !s.power })
+  }
+  return null
+}
+
+/** Set every light in the room to one brightness, turning on the ones that are off. */
+export function setRoomBrightness(list: Device[], brightness: number) {
+  for (const d of lightsOf(list)) sendCommand(d.id, 'set_brightness', brightness, { power: true, brightness })
+}
+
 /** Lights act as one: any on turns all off, otherwise all on. */
 export function toggleLights(list: Device[]) {
   const lights = lightsOf(list)

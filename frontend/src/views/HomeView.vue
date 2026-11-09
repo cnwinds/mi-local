@@ -3,10 +3,9 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 import { showConfirmDialog } from 'vant'
 import { AirVent, Blinds, Lightbulb, Thermometer } from 'lucide-vue-next'
 import { deviceList, sendCommand } from '../store'
-import { AC_MODE_NAMES, isRunning, lightsOf, panelRooms, roomDevices, roomSummary, toggleLights } from '../rooms'
-import { openRoom } from '../router'
-import DeviceIcon from '../components/DeviceIcon.vue'
+import { AC_MODE_NAMES, isRunning, panelRooms } from '../rooms'
 import PageHeader from '../components/PageHeader.vue'
+import RoomTile from '../components/home/RoomTile.vue'
 
 const now = ref(new Date())
 const timer = setInterval(() => (now.value = new Date()), 60_000)
@@ -31,36 +30,6 @@ const headline = computed(() => {
   for (const ac of acsOn.value) parts.push(`${ac.room}空调在${AC_MODE_NAMES[ac.state.mode ?? 'auto']}`)
   return parts.join('，')
 })
-
-// Main devices shown as icons on each room card, so state is readable at a glance.
-const ICON_KINDS = ['light', 'ac', 'bath_heater', 'curtain', 'airer', 'plug']
-const cards = computed(() =>
-  panelRooms.value.map((room) => {
-    const list = roomDevices(room)
-    const lights = lightsOf(list)
-    const temp = list.find((d) => d.state.online && d.state.temperature !== undefined)?.state.temperature
-    const icons = list
-      .filter((d) => ICON_KINDS.includes(d.kind))
-      .sort((a, b) => ICON_KINDS.indexOf(a.kind) - ICON_KINDS.indexOf(b.kind))
-      .slice(0, 6)
-    const ac = list.find((d) => d.kind === 'ac' && isRunning(d))
-    return {
-      room,
-      list,
-      temp,
-      icons,
-      summary: roomSummary(room).filter((s) => !s.startsWith('室温')),
-      hasLights: list.some((d) => d.kind === 'light'),
-      lightsOn: lights.some((d) => d.state.power),
-      lightsOnline: lights.length > 0,
-      glow: lights.some((d) => d.state.power) ? 'warm' : ac ? (ac.state.mode === 'heat' ? 'heat' : 'cool') : '',
-    }
-  }),
-)
-
-const iconActive = (d: (typeof cards.value)[number]['icons'][number]) =>
-  !!d.state.online && (d.kind === 'curtain' ? (d.state.position ?? 0) > 5 : !!d.state.power)
-
 async function allLightsOff() {
   await showConfirmDialog({ title: '关闭全部灯', message: `将关闭 ${lightsOn.value.length} 盏灯` })
   lightsOn.value.forEach((d) => sendCommand(d.id, 'turn_off', undefined, { power: false }))
@@ -110,25 +79,9 @@ async function allAcOff() {
 
     <div class="section-label rooms-label">房间</div>
     <div class="rooms">
-      <div v-for="c in cards" :key="c.room" class="room card pressable" :class="c.glow" @click="openRoom(c.room)">
-        <div class="room-top">
-          <div class="room-name">{{ c.room }}</div>
-          <div v-if="c.temp !== undefined" class="room-temp num">{{ c.temp }}°</div>
-        </div>
-        <div class="room-icons">
-          <DeviceIcon v-for="d in c.icons" :key="d.id" :kind="d.kind" :model="d.model" :active="iconActive(d)" :size="30" />
-          <span v-if="!c.icons.length" class="room-count">{{ c.list.length }} 个设备</span>
-        </div>
-        <div class="room-bottom">
-          <div class="room-summary">{{ c.summary.join(' · ') || '一切正常' }}</div>
-          <button v-if="c.hasLights" class="light-toggle" :class="{ on: c.lightsOn, disabled: !c.lightsOnline }"
-            :title="c.lightsOn ? '关灯' : '开灯'" @click.stop="c.lightsOnline && toggleLights(c.list)">
-            <Lightbulb :size="18" :stroke-width="2.2" />
-          </button>
-        </div>
-      </div>
+      <RoomTile v-for="room in panelRooms" :key="room" :room="room" />
     </div>
-    <van-empty v-if="!cards.length" description="还没有设备，去「设备」页同步米家" />
+    <van-empty v-if="!panelRooms.length" description="还没有设备，去「设备」页同步米家" />
   </div>
 </template>
 
@@ -214,95 +167,14 @@ async function allAcOff() {
 .rooms-label {
   padding: 0 16px;
 }
+/* Bento grid: tiles span 1, 2 or 2×2 cells by content, dense packing fills the gaps */
 .rooms {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(150px, auto);
+  grid-auto-flow: row dense;
   gap: 12px;
   padding: 0 16px;
-}
-.room {
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  min-height: 150px;
-  box-sizing: border-box;
-  cursor: pointer;
-}
-.room.warm {
-  background: var(--warm-glow);
-}
-.room.cool {
-  background: var(--cool-glow);
-}
-.room.heat {
-  background: var(--heat-glow);
-}
-.room-top {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-}
-.room-name {
-  font-size: 17px;
-  font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.room-temp {
-  font-size: 18px;
-  font-weight: 500;
-  color: var(--text-2);
-}
-.room-icons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-height: 30px;
-}
-.room-count {
-  font-size: 12px;
-  color: var(--text-3);
-  align-self: center;
-}
-.room-bottom {
-  margin-top: auto;
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-}
-.room-summary {
-  flex: 1;
-  min-width: 0;
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--text-2);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.light-toggle {
-  flex: none;
-  width: 40px;
-  height: 40px;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--surface-2);
-  color: var(--text-3);
-  transition: all 0.2s;
-}
-.light-toggle.on {
-  background: var(--warm);
-  color: #fff;
-  box-shadow: var(--shadow-warm);
-}
-.light-toggle.disabled {
-  opacity: 0.35;
 }
 
 @media (min-width: 640px) {
@@ -310,7 +182,7 @@ async function allAcOff() {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
   .rooms {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 @media (min-width: 900px) {
@@ -328,15 +200,12 @@ async function allAcOff() {
   }
   .rooms {
     gap: 16px;
-  }
-  .room {
-    min-height: 170px;
-    padding: 18px;
+    grid-auto-rows: minmax(170px, auto);
   }
 }
-@media (min-width: 1200px) {
+@media (min-width: 1500px) {
   .rooms {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 }
 </style>
