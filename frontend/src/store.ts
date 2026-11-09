@@ -154,7 +154,7 @@ export function connect() {
       loadScenes()
     } else if (data.type === 'event') {
       const e: HubEvent = { ts: data.ts, device: data.device, event: data.event }
-      events.value = [e, ...events.value].slice(0, 200)
+      events.value = [e, ...events.value].slice(0, 2000)
       eventListeners.forEach((l) => l(e))
     }
   }

@@ -16,7 +16,8 @@ from .drivers.miio_wifi import DRIVERS
 from .micloud import MiCloud
 from .rules import RuleEngine
 from .drivers.lockin import LockinCloud, LockinLockDriver
-from .store import cloud_file, devices_file, lockin_file, panels_file, rules_file, scenes_file, settings_file
+from .store import (cloud_file, devices_file, events_file, lockin_file, panels_file, rules_file, scenes_file,
+                    settings_file)
 from .voice import VoiceBridge
 
 log = logging.getLogger(__name__)
@@ -27,6 +28,8 @@ DRIVER_FIELDS = ("driver", "ip", "token", "sid", "midea_token", "device_id")
 CLOUD_SYNC_INTERVAL = 30 * 60
 DOORBELL_ID = "gw2.doorbell"
 GW_DRIVERS = ("gw2", "gw2bell")
+EVENT_HISTORY = 2000
+EVENT_SAVE_INTERVAL = 10
 # Gateways that speak the LAN protocol on UDP 9898 once it is enabled in Mi Home.
 SUPPORTED_GATEWAYS = {"lumi.gateway.v2", "lumi.gateway.v3", "lumi.gateway.mieu01"}
 
@@ -44,7 +47,8 @@ class Hub:
         self.scenes: list[dict] = scenes_file.load()
         self.states: dict[str, dict] = {i: {"online": False} for i in self.records}
         self.drivers: dict = {}
-        self.events: deque = deque(maxlen=200)
+        self.events: deque = deque(events_file.load(), maxlen=EVENT_HISTORY)
+        self._events_dirty = False
         self.subscribers: set[asyncio.Queue] = set()
         self.engine = RuleEngine(self)
         self.gateway: Gateway2 | None = None
@@ -69,10 +73,12 @@ class Hub:
         self._tasks.append(asyncio.create_task(self._cloud_loop()))
         self._tasks.append(asyncio.create_task(self._gateway_watch()))
         self._tasks.append(asyncio.create_task(self.voice.run()))
+        self._tasks.append(asyncio.create_task(self._events_saver()))
 
     async def stop(self) -> None:
         for task in [*self._tasks, *self._poll_tasks.values()]:
             task.cancel()
+        self._save_events()
         if self.gateway:
             self.gateway.stop()
 
@@ -288,6 +294,7 @@ class Hub:
     def emit_event(self, device_id: str, event: str) -> None:
         entry = {"ts": time.time(), "device": device_id, "event": event}
         self.events.append(entry)
+        self._events_dirty = True
         self.broadcast({"type": "event", **entry})
         self.engine.handle_event(device_id, event)
 
@@ -536,6 +543,17 @@ class Hub:
 
     def save_devices(self) -> None:
         devices_file.save(list(self.records.values()))
+
+    async def _events_saver(self) -> None:
+        # Batched so a burst of key presses costs one write.
+        while True:
+            await asyncio.sleep(EVENT_SAVE_INTERVAL)
+            self._save_events()
+
+    def _save_events(self) -> None:
+        if self._events_dirty:
+            self._events_dirty = False
+            events_file.save(list(self.events))
 
     def save_rules(self) -> None:
         rules_file.save(self.rules)

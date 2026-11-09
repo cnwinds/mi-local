@@ -32,5 +32,7 @@ cloud_file = JsonFile("cloud.json", {})
 panels_file = JsonFile("panels.json", {})
 # [{"id", "room", "name", "icon", "actions": [{"device", "action", "value"}]}]
 scenes_file = JsonFile("scenes.json", [])
+# [{"ts", "device", "event"}], oldest first
+events_file = JsonFile("events.json", [])
 # {"access_token"} for the Lockin (dding) cloud; account-wide, shared by every lock
 lockin_file = JsonFile("lockin.json", {})

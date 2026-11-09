@@ -15,6 +15,7 @@ import { ChevronRight, EyeOff, Plus } from 'lucide-vue-next'
 const tab = ref('devices')
 const detailId = ref<string | null>(null)
 const showAdd = ref(false)
+const eventLimit = ref(100)
 
 onMounted(loadEvents)
 
@@ -33,6 +34,12 @@ function statusText(d: Device) {
 const onlineCount = computed(() => deviceList.value.filter((d) => d.state.online).length)
 
 const timeFmt = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+const dateFmt = new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' })
+function eventTime(ts: number) {
+  const d = new Date(ts * 1000)
+  const today = new Date().toDateString() === d.toDateString()
+  return today ? timeFmt.format(d) : `${dateFmt.format(d)} ${timeFmt.format(d)}`
+}
 </script>
 
 <template>
@@ -69,11 +76,13 @@ const timeFmt = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-d
         </div>
       </van-tab>
       <van-tab title="事件日志" name="events">
-        <div class="tip">按下任意无线开关，这里会实时显示是哪个开关。</div>
+        <div class="tip">记录无线开关按键和门锁开关门，保留最近 2000 条，重启也不会丢。</div>
         <van-cell-group inset class="events">
-          <van-cell v-for="(e, i) in events" :key="i" :title="devices[e.device]?.name ?? e.device" :value="EVENT_NAMES[e.event] ?? e.event"
-            :label="timeFmt.format(new Date(e.ts * 1000))" @click="devices[e.device] && edit(devices[e.device])" is-link />
+          <van-cell v-for="(e, i) in events.slice(0, eventLimit)" :key="i" :title="devices[e.device]?.name ?? e.device" :value="EVENT_NAMES[e.event] ?? e.event"
+            :label="eventTime(e.ts)" @click="devices[e.device] && edit(devices[e.device])" is-link />
           <van-cell v-if="!events.length" title="暂无事件" />
+          <van-cell v-if="events.length > eventLimit" :title="`再显示 100 条（还有 ${events.length - eventLimit} 条）`" class="more"
+            @click="eventLimit += 100" />
         </van-cell-group>
       </van-tab>
     </van-tabs>
@@ -177,6 +186,11 @@ const timeFmt = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-d
 .arrow {
   color: var(--text-3);
   flex: none;
+}
+.more {
+  color: var(--accent);
+  text-align: center;
+  cursor: pointer;
 }
 .tip {
   font-size: 12px;
