@@ -35,15 +35,26 @@ function toggleExpanded(id: string) {
   if (!next.delete(id)) next.add(id)
   expanded.value = next
 }
-function shownGestures(id: string) {
-  const bound = GESTURES.filter(([e]) => binding(id, e))
+// When every gesture does the same thing, the card shows one merged row.
+const ALL = 'all'
+function shownGestures(id: string): [string, string][] {
   if (expanded.value.has(id)) return GESTURES
+  if (sameForAll(id)) return [[ALL, '任意按法']]
+  const bound = GESTURES.filter(([e]) => binding(id, e))
   return bound.length ? bound : GESTURES.slice(0, 1)
 }
 const unsetLabels = (id: string) => GESTURES.filter(([e]) => !binding(id, e) && e !== 'click').map(([, l]) => l)
 
+const ruleFor = (id: string, event: string) => rules.value.find((r) => r.trigger.device === id && r.trigger.event === event)
+const signature = (id: string, event: string) =>
+  (ruleFor(id, event)?.actions ?? []).map((a) => `${a.device}:${a.action}:${JSON.stringify(a.value ?? null)}`).sort().join('|')
+function sameForAll(id: string) {
+  const first = signature(id, GESTURES[0][0])
+  return !!first && GESTURES.every(([e]) => signature(id, e) === first)
+}
+
 function binding(id: string, event: string) {
-  const rule = rules.value.find((r) => r.trigger.device === id && r.trigger.event === event)
+  const rule = ruleFor(id, event === ALL ? GESTURES[0][0] : event)
   if (!rule?.actions.length) return null
   const targets = rule.actions.map((a) => devices[a.device]).filter(Boolean)
   const kinds = new Set(rule.actions.map((a) => a.action))
@@ -53,9 +64,11 @@ function binding(id: string, event: string) {
 
 const editSwitch = ref<string | null>(null)
 const editEvent = ref('click')
+const editLinked = ref<string[]>([])
 function editBinding(id: string, event: string) {
   editSwitch.value = id
-  editEvent.value = event
+  editEvent.value = event === ALL ? GESTURES[0][0] : event
+  editLinked.value = event === ALL ? GESTURES.slice(1).map(([e]) => e) : []
 }
 const settingsId = ref<string | null>(null)
 
@@ -102,23 +115,27 @@ onMounted(loadRules)
           </div>
 
           <div class="gestures">
-            <button v-for="[event, label] in shownGestures(d.id)" :key="event" class="gesture" :class="{ primary: event === 'click' }"
-              @click="editBinding(d.id, event)">
-              <span class="g-label">{{ label }}</span>
+            <button v-for="[event, label] in shownGestures(d.id)" :key="event" class="gesture"
+              :class="{ primary: event === 'click' || event === ALL }" @click="editBinding(d.id, event)">
+              <span v-if="event === ALL" class="g-label g-all" title="单击、双击、长按都一样">
+                <span class="glyphs"><i class="tap" /><i class="tap2" /><i class="hold" /></span>{{ label }}
+              </span>
+              <span v-else class="g-label">{{ label }}</span>
               <template v-if="binding(d.id, event)">
                 <span class="targets">
                   <span v-for="t in binding(d.id, event)!.targets" :key="t.id" class="target" :class="{ lit: t.state.power }">
                     <DeviceIcon :kind="t.kind" :model="t.model" :name="t.name" :active="!!t.state.power" :size="22" />{{ fullName(t) }}
                   </span>
                 </span>
-                <span v-if="event !== 'click' && binding(d.id, event)!.verb" class="verb">{{ binding(d.id, event)!.verb }}</span>
+                <span v-if="event !== 'click' && event !== ALL && binding(d.id, event)!.verb" class="verb">{{ binding(d.id, event)!.verb }}</span>
               </template>
               <span v-else class="empty"><Plus v-if="event === 'click'" :size="14" />{{ event === 'click' ? '选择要控制的设备' : '未设置' }}</span>
               <ChevronRight :size="16" class="arrow" />
             </button>
           </div>
-          <button v-if="unsetLabels(d.id).length" class="more" @click="toggleExpanded(d.id)">
+          <button v-if="sameForAll(d.id) || unsetLabels(d.id).length" class="more" @click="toggleExpanded(d.id)">
             <template v-if="expanded.has(d.id)">收起<ChevronUp :size="14" /></template>
+            <template v-else-if="sameForAll(d.id)">分开设置<ChevronDown :size="14" /></template>
             <template v-else><Plus :size="13" />{{ unsetLabels(d.id).join(' / ') }}</template>
           </button>
         </div>
@@ -142,7 +159,7 @@ onMounted(loadRules)
       </template>
     </div>
 
-    <BindingEditor :switch-id="editSwitch" :event="editEvent" @close="editSwitch = null" />
+    <BindingEditor :switch-id="editSwitch" :event="editEvent" :linked="editLinked" @close="editSwitch = null" />
     <DeviceSheet :device-id="settingsId" @close="settingsId = null" />
   </div>
 </template>
@@ -282,6 +299,41 @@ onMounted(loadRules)
 .primary .g-label {
   color: var(--text-2);
   font-weight: 600;
+}
+/* Merged row: tiny drawings of a tap, a double tap and a hold above the label */
+.g-all {
+  width: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.glyphs {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+}
+.glyphs i {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.glyphs .tap {
+  width: 4px;
+}
+.glyphs .tap2 {
+  width: 4px;
+  margin-right: 6px;
+  box-shadow: 6px 0 0 var(--accent);
+}
+.glyphs .hold {
+  width: 12px;
 }
 .targets {
   flex: 1;

@@ -5,7 +5,8 @@ import { api, type Device, type Rule, type RuleAction } from '../api'
 import { EVENT_NAMES, deviceList, devices, loadDevices, loadRules, rooms, rules } from '../store'
 import { suggestSwitchName } from '../naming'
 
-const props = defineProps<{ switchId: string | null; event: string }>()
+// linked: further gestures that get exactly the same actions on save.
+const props = defineProps<{ switchId: string | null; event: string; linked?: string[] }>()
 const emit = defineEmits<{ close: [] }>()
 
 const show = computed({
@@ -59,15 +60,15 @@ function toggle(d: Device) {
 const pickedCount = computed(() => Object.keys(picked.value).length)
 const multiToggle = computed(() => Object.values(picked.value).filter((a) => a === 'toggle').length > 1)
 
+const events = computed(() => [props.event, ...(props.linked ?? [])])
+const heading = computed(() => events.value.map((e) => EVENT_NAMES[e]).join(' / '))
+
 async function save() {
   if (!sw.value) return
   const actions: RuleAction[] = Object.entries(picked.value).map(([device, action]) => ({ device, action }))
-  const id = existing.value?.id
-  if (!actions.length) {
-    if (id) await api.deleteRule(id)
-  } else {
-    let name = sw.value.name
-    if (props.event === 'click' && (sw.value.name_auto || sw.value.name === sw.value.cloud_name)) {
+  let name = sw.value.name
+  if (actions.length) {
+    if (events.value.includes('click') && (sw.value.name_auto || sw.value.name === sw.value.cloud_name)) {
       const suggestion = suggestSwitchName(actions.map((a) => devices[a.device]))
       if (suggestion) {
         name = suggestion.name
@@ -78,13 +79,20 @@ async function save() {
         })
       }
     }
+  }
+  for (const event of events.value) {
+    const old = rules.value.find((r) => r.trigger.device === sw.value!.id && r.trigger.event === event)
+    if (!actions.length) {
+      if (old?.id) await api.deleteRule(old.id)
+      continue
+    }
     const rule: Rule = {
-      name: `${name} ${EVENT_NAMES[props.event]}`,
-      enabled: existing.value?.enabled ?? true,
-      trigger: { type: 'device_event', device: sw.value.id, event: props.event },
+      name: `${name} ${EVENT_NAMES[event]}`,
+      enabled: old?.enabled ?? true,
+      trigger: { type: 'device_event', device: sw.value.id, event },
       actions,
     }
-    if (id) await api.updateRule(id, rule)
+    if (old?.id) await api.updateRule(old.id, rule)
     else await api.createRule(rule)
   }
   await Promise.all([loadRules(), loadDevices()])
@@ -98,7 +106,7 @@ async function save() {
     <div class="editor" v-if="sw">
       <div class="bar">
         <span class="cancel" @click="emit('close')">取消</span>
-        <span class="heading">{{ `${EVENT_NAMES[event]}「${sw.name}」` }}</span>
+        <span class="heading">{{ `${heading}「${sw.name}」` }}</span>
         <span class="save" @click="save">保存</span>
       </div>
       <div class="sub">{{ pickedCount ? `已选 ${pickedCount} 个设备` : '选择要控制的设备，不选则清除这个按法' }}</div>

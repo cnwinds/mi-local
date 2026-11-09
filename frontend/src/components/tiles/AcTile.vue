@@ -246,17 +246,17 @@ const setSwing = () => sendCommand(props.device.id, 'set_swing', !s.value.swing,
   margin-top: 14px;
   height: 48px;
   border-radius: 14px;
-  background: var(--cool-soft);
-  color: var(--cool);
+  background: var(--surface-2);
+  color: var(--text-2);
   font-size: 15px;
   font-weight: 600;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
+  transition: background 0.15s;
 }
-.heat .start {
-  background: var(--heat-soft);
-  color: var(--heat);
+.start:active {
+  background: var(--surface-3);
 }
 </style>
