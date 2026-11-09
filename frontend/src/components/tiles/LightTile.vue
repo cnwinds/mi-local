@@ -115,7 +115,7 @@ onBeforeUnmount(() => clearTimeout(pressTimer))
     <div class="fill" :style="{ width: `${shownOn ? level : 0}%` }" />
     <div class="content">
       <div class="top">
-        <DeviceIcon kind="light" :model="single?.model" :active="shownOn" :size="42" />
+        <DeviceIcon kind="light" :model="single?.model" :name="single?.name" :active="shownOn" :size="42" />
         <div v-if="shownOn && online.length" class="level num">{{ level }}<small>%</small></div>
       </div>
       <div class="name">{{ name }}</div>

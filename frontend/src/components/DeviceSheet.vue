@@ -56,7 +56,7 @@ function cmd(action: string, value?: unknown, optimistic?: Record<string, unknow
       </div>
       <template v-if="view === 'settings' || !controllable">
         <div class="head">
-          <DeviceIcon :kind="device.kind" :model="device.model" :size="48" />
+          <DeviceIcon :kind="device.kind" :model="device.model" :name="device.name" :size="48" />
           <div>
             <div class="title">{{ device.name }}</div>
             <div class="sub">{{ device.room }} · {{ s.online ? '在线' : '离线' }}<template v-if="s.battery !== undefined"> · 电量 {{ s.battery }}%</template></div>
@@ -67,7 +67,7 @@ function cmd(action: string, value?: unknown, optimistic?: Record<string, unknow
       <component :is="tile" v-else-if="tile && s.online" :device="device" class="embedded" />
       <template v-else>
         <div class="head">
-          <DeviceIcon :kind="device.kind" :model="device.model" :active="!!s.power" :size="48" />
+          <DeviceIcon :kind="device.kind" :model="device.model" :name="device.name" :active="!!s.power" :size="48" />
           <div>
             <div class="title">{{ device.name }}</div>
             <div class="sub">{{ device.room }} · {{ s.online ? '在线' : '离线' }}</div>

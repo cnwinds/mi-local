@@ -62,7 +62,7 @@ function eventTime(ts: number) {
             <div class="section-label">{{ g.label }} · {{ g.items.length }}</div>
             <div class="group-list card">
               <div v-for="d in g.items" :key="d.id" class="item" @click="edit(d)">
-                <DeviceIcon :kind="d.kind" :model="d.model" :size="38" :class="{ dim: !d.state.online }" />
+                <DeviceIcon :kind="d.kind" :model="d.model" :name="d.name" :size="38" :class="{ dim: !d.state.online }" />
                 <div class="item-text">
                   <div class="item-name">{{ d.name }}<EyeOff v-if="d.hidden" :size="13" class="hidden-mark" /></div>
                   <div class="item-meta">

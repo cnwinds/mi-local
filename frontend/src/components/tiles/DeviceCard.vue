@@ -61,7 +61,7 @@ function ring() {
 <template>
   <div class="device-card card" :class="{ active, offline: !online }" @click="emit('detail', device)">
     <header>
-      <DeviceIcon :kind="device.kind" :model="device.model" :active="active" :size="42" />
+      <DeviceIcon :kind="device.kind" :model="device.model" :name="device.name" :active="active" :size="42" />
       <div class="text">
         <div class="name">{{ device.name }}</div>
         <div class="status">{{ status }}<ChevronRight :size="13" /></div>

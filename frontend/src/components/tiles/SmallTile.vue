@@ -32,7 +32,7 @@ function tap() {
 
 <template>
   <div class="small-tile card pressable" :class="{ active, offline: !online }" @click="tap">
-    <DeviceIcon :kind="device.kind" :model="device.model" :active="active" :size="36" />
+    <DeviceIcon :kind="device.kind" :model="device.model" :name="device.name" :active="active" :size="36" />
     <div class="text">
       <div class="name">{{ device.name }}</div>
       <div class="status">{{ status }}</div>

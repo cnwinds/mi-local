@@ -114,8 +114,8 @@ export type RoomSize = 's' | 'm' | 'l'
 export function roomSize(list: Device[]): RoomSize {
   const count = list.filter((d) => d.kind !== 'doorbell').length
   const hasAc = list.some((d) => d.kind === 'ac')
-  if ((hasAc && count >= 4) || count >= 7) return 'l'
-  if (hasAc || count >= 3) return 'm'
+  if ((hasAc && count >= 4) || count >= 9) return 'l'
+  if (hasAc || count >= 4) return 'm'
   return 's'
 }
 

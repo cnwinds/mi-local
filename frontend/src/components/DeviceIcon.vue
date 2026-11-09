@@ -1,13 +1,21 @@
 <script setup lang="ts">
 import { computed, type Component } from 'vue'
 import {
-  AirVent, BellRing, Blinds, Box, CircleDot, CookingPot, Droplets, Fish, Heater, Lightbulb, Lock, Plug,
-  Router, Shirt, Speaker, WashingMachine, Wind,
+  AirVent, BellRing, Blinds, Box, CircleDot, CookingPot, Droplets, Fish, Heater, LampCeiling, LampDesk, LampFloor,
+  Lightbulb, Lock, Plug, Router, Shirt, Speaker, WashingMachine, Wind,
 } from 'lucide-vue-next'
 import type { Kind } from '../api'
+import Downlight from './icons/Downlight.vue'
 
 // tone: which accent the active state uses; defaults by kind (lights warm, AC cool).
-const props = defineProps<{ kind: Kind; model?: string; active?: boolean; tone?: 'warm' | 'cool' | 'heat' | 'accent'; size?: number }>()
+const props = defineProps<{
+  kind: Kind
+  model?: string
+  name?: string
+  active?: boolean
+  tone?: 'warm' | 'cool' | 'heat' | 'accent'
+  size?: number
+}>()
 
 const BY_KIND: Partial<Record<Kind, Component>> = {
   light: Lightbulb, curtain: Blinds, plug: Plug, switch: CircleDot, doorbell: BellRing, ac: AirVent,
@@ -16,10 +24,22 @@ const BY_KIND: Partial<Record<Kind, Component>> = {
 const BY_MODEL: [string, Component][] = [
   ['wifispeaker', Speaker], ['washer', WashingMachine], ['fishbowl', Fish], ['waterheater', Droplets],
   ['waterpuri', Droplets], ['hood', Wind], ['cooker', CookingPot], ['microwave', CookingPot], ['fan', Wind],
-  ['airpurifier', Wind], ['derh', Droplets],
+  ['airpurifier', Wind], ['derh', Droplets], ['sread', LampDesk], ['.light.', Lightbulb],
+]
+// Lights are told apart by fixture, matched on model or name.
+const LIGHTS: [RegExp, Component][] = [
+  [/downlight|spot|筒灯|射灯/i, Downlight],
+  [/ceiling|吸顶|主灯/i, LampCeiling],
+  [/desk|sread|台灯/i, LampDesk],
+  [/floor|落地/i, LampFloor],
 ]
 
 const icon = computed(() => {
+  if (props.kind === 'light' || (props.kind === 'other' && props.model?.includes('.light.'))) {
+    const text = `${props.model ?? ''} ${props.name ?? ''}`
+    const hit = LIGHTS.find(([re]) => re.test(text))
+    if (hit) return hit[1]
+  }
   if (props.kind === 'other' && props.model) {
     const hit = BY_MODEL.find(([key]) => props.model!.includes(key))
     if (hit) return hit[1]

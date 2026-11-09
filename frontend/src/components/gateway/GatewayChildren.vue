@@ -51,7 +51,7 @@ watch(() => pairing.value?.found.length, load)
     <div v-if="sorted.length" class="list card">
       <template v-for="c in sorted" :key="c.sid">
         <div v-if="c.device" class="item" @click="emit('edit', c.device)">
-          <DeviceIcon :kind="c.device.kind" :model="c.device.model" :size="36" :class="{ dim: !c.online }" />
+          <DeviceIcon :kind="c.device.kind" :model="c.device.model" :name="c.device.name" :size="36" :class="{ dim: !c.online }" />
           <div class="text">
             <div class="name">{{ c.device.name }}</div>
             <div class="meta"><span class="dot" :class="{ on: c.online }" />{{ c.device.room }} · {{ c.online ? '在线' : '离线' }} · …{{ c.sid.slice(-6) }}</div>

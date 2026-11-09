@@ -53,7 +53,7 @@ async function reset() {
       <div class="tip">「大」是可以直接操作的大卡片，「小」放在下方的小格子里，「隐藏」不在面板显示。用箭头调整顺序。</div>
       <div class="scroll">
         <div v-for="(item, i) in items" :key="item.id" class="row" :class="{ hidden: item.size === 'hidden' }">
-          <DeviceIcon :kind="item.device.kind" :model="item.device.model" :size="34" class="icon" />
+          <DeviceIcon :kind="item.device.kind" :model="item.device.model" :name="item.device.name" :size="34" class="icon" />
           <div class="name">{{ item.device.name }}</div>
           <div class="sizes">
             <button v-for="[size, label] in SIZES" :key="size" :class="{ selected: item.size === size }"

@@ -108,7 +108,7 @@ onMounted(loadRules)
               <template v-if="binding(d.id, event)">
                 <span class="targets">
                   <span v-for="t in binding(d.id, event)!.targets" :key="t.id" class="target" :class="{ lit: t.state.power }">
-                    <DeviceIcon :kind="t.kind" :model="t.model" :active="!!t.state.power" :size="22" />{{ fullName(t) }}
+                    <DeviceIcon :kind="t.kind" :model="t.model" :name="t.name" :active="!!t.state.power" :size="22" />{{ fullName(t) }}
                   </span>
                 </span>
                 <span v-if="event !== 'click' && binding(d.id, event)!.verb" class="verb">{{ binding(d.id, event)!.verb }}</span>
