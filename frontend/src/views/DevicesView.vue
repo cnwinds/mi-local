@@ -200,8 +200,8 @@ function eventTime(ts: number) {
 @media (min-width: 900px) {
   .top-cards {
     padding: 8px 0 4px;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: start;
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    align-items: stretch;
   }
   .groups {
     padding: 0;

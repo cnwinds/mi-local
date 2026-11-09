@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { showConfirmDialog, showFailToast, showSuccessToast } from 'vant'
 import { api, type SyncSummary } from '../api'
 import { cloud, loadCloud } from '../store'
-import { CircleCheck, Cloud as CloudIcon } from 'lucide-vue-next'
+import { CircleCheck, Cloud as CloudIcon, LogOut, RefreshCw } from 'lucide-vue-next'
 
 const syncing = ref(false)
 const showQr = ref(false)
@@ -57,21 +57,24 @@ async function logout() {
 
 <template>
   <div class="cloud card" v-if="cloud">
-    <div class="row">
-      <div class="badge" :class="{ on: cloud.logged_in }"><CloudIcon :size="20" /></div>
-      <div class="text">
-        <div class="title">米家同步</div>
-        <div class="sub" v-if="cloud.logged_in">
-          账号 {{ cloud.user_id }} · {{ cloud.last_sync ? `上次同步 ${timeFmt.format(new Date(cloud.last_sync * 1000))}` : '尚未同步' }}
-        </div>
-        <div class="sub" v-else>登录后自动同步设备名称、房间和密钥</div>
-      </div>
-      <van-button v-if="cloud.logged_in" size="small" round type="primary" :loading="syncing" @click="sync">立即同步</van-button>
-      <van-button v-else size="small" round type="primary" @click="startLogin">扫码登录</van-button>
+    <div class="badge" :class="{ on: cloud.logged_in, error: cloud.logged_in && cloud.last_error }">
+      <CloudIcon :size="18" />
     </div>
-    <div class="result" v-if="cloud.logged_in && cloud.last_error">同步失败：{{ cloud.last_error }}（断网时正常，本地功能不受影响）</div>
-    <div class="result" v-else-if="cloud.logged_in && summaryText">{{ summaryText }}</div>
-    <div class="links" v-if="cloud.logged_in"><span @click="logout">退出账号</span></div>
+    <div class="text" :title="cloud.logged_in ? `米家账号 ${cloud.user_id}` : ''">
+      <div class="title">米家同步</div>
+      <div v-if="!cloud.logged_in" class="sub">登录后自动同步设备名称、房间和密钥</div>
+      <div v-else-if="cloud.last_error" class="sub error">同步失败：{{ cloud.last_error }}（断网时正常，本地功能不受影响）</div>
+      <div v-else class="sub">
+        {{ cloud.last_sync ? timeFmt.format(new Date(cloud.last_sync * 1000)) : '尚未同步' }}<template v-if="summaryText"> · {{ summaryText }}</template>
+      </div>
+    </div>
+    <template v-if="cloud.logged_in">
+      <button class="icon-btn primary" :class="{ spin: syncing }" :disabled="syncing" title="立即同步" @click="sync">
+        <RefreshCw :size="17" :stroke-width="2.2" />
+      </button>
+      <button class="icon-btn" title="退出米家账号" @click="logout"><LogOut :size="16" /></button>
+    </template>
+    <van-button v-else size="small" round type="primary" @click="startLogin">扫码登录</van-button>
 
     <van-popup v-model:show="showQr" round closeable :style="{ width: '86%' }">
       <div class="qr" v-if="login">
@@ -96,17 +99,15 @@ async function logout() {
 
 <style scoped>
 .cloud {
-  padding: 16px;
-}
-.row {
   display: flex;
   align-items: center;
   gap: 12px;
+  padding: 12px 12px 12px 14px;
 }
 .badge {
-  width: 42px;
-  height: 42px;
-  border-radius: 14px;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
   flex: none;
   display: flex;
   align-items: center;
@@ -122,29 +123,51 @@ async function logout() {
   flex: 1;
   min-width: 0;
 }
+.badge.error {
+  background: var(--heat-soft);
+  color: var(--heat);
+}
 .title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
 }
 .sub {
   font-size: 12px;
   color: var(--text-3);
-  margin-top: 3px;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.result {
-  margin-top: 12px;
-  font-size: 12px;
-  color: var(--text-2);
-  background: var(--surface-2);
-  border-radius: 10px;
-  padding: 8px 12px;
+.sub.error {
+  color: var(--heat);
 }
-.links {
-  margin-top: 10px;
-  font-size: 12px;
+.icon-btn {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--text-3);
-  text-align: right;
-  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.icon-btn:hover {
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+.icon-btn.primary {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.icon-btn.spin svg {
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .qr {
   padding: 24px 20px;

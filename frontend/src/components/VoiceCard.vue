@@ -23,33 +23,29 @@ async function toggle(enabled: boolean) {
 
 <template>
   <div class="voice card" v-if="voice?.devices.length">
-    <div class="row">
-      <div class="badge" :class="{ on: voice.active }"><Mic :size="20" /></div>
-      <div class="text">
-        <div class="title">小爱语音控制</div>
-        <div class="sub">{{ subtitle }}</div>
+    <div class="badge" :class="{ on: voice.active }"><Mic :size="18" /></div>
+    <div class="text" :title="subtitle">
+      <div class="title">小爱语音控制</div>
+      <div v-if="voice.last && voice.enabled" class="sub">
+        {{ timeFmt.format(new Date(voice.last.ts * 1000)) }} 「{{ voice.last.query }}」→ {{ voice.last.reply }}
       </div>
-      <van-switch :model-value="voice.enabled" size="20px" @update:model-value="toggle" />
+      <div v-else class="sub">{{ subtitle }}</div>
     </div>
-    <div class="result" v-if="voice.last">
-      {{ timeFmt.format(new Date(voice.last.ts * 1000)) }} {{ voice.last.speaker }}听到「{{ voice.last.query }}」→ {{ voice.last.reply }}
-    </div>
+    <van-switch :model-value="voice.enabled" size="20px" @update:model-value="toggle" />
   </div>
 </template>
 
 <style scoped>
 .voice {
-  padding: 16px;
-}
-.row {
   display: flex;
   align-items: center;
   gap: 12px;
+  padding: 12px 14px;
 }
 .badge {
-  width: 42px;
-  height: 42px;
-  border-radius: 14px;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
   flex: none;
   display: flex;
   align-items: center;
@@ -66,20 +62,15 @@ async function toggle(enabled: boolean) {
   min-width: 0;
 }
 .title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
 }
 .sub {
   font-size: 12px;
   color: var(--text-3);
-  margin-top: 3px;
-}
-.result {
-  margin-top: 12px;
-  font-size: 12px;
-  color: var(--text-2);
-  background: var(--surface-2);
-  border-radius: 10px;
-  padding: 8px 12px;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

@@ -11,6 +11,8 @@
   --text-2: #555b67;
   --text-3: #9298a3;
   --line: rgba(20, 22, 27, 0.07);
+  --scroll-thumb: rgba(20, 22, 27, 0.16);
+  --scroll-thumb-hover: rgba(20, 22, 27, 0.3);
 
   --accent: #4b67f5;
   --accent-soft: #eaeeff;
@@ -95,6 +97,8 @@
     --text-2: #b4bac6;
     --text-3: #7c8391;
     --line: rgba(255, 255, 255, 0.07);
+    --scroll-thumb: rgba(255, 255, 255, 0.14);
+    --scroll-thumb-hover: rgba(255, 255, 255, 0.28);
 
     --accent: #6f86ff;
     --accent-soft: rgba(111, 134, 255, 0.16);
@@ -129,6 +133,31 @@ body {
     var(--bg);
   background-attachment: fixed;
   min-height: 100vh;
+}
+/* Scrollbars: a thin rounded thumb on a clear track, stronger on hover */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: var(--scroll-thumb) padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  border-width: 2px;
+  background: var(--scroll-thumb-hover) padding-box;
+}
+::-webkit-scrollbar-button {
+  display: none;
 }
 button {
   font: inherit;
