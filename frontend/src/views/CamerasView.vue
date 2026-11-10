@@ -70,7 +70,7 @@ const hdTrying = ref<HdLevel | null>(null)
 const hdShown = ref(false)
 let hdQueue: HdLevel[] = []
 let hdWanted = false
-const hdMemo = (id: string) => `mi-local:camera-hd:${id}`
+const hdMemo = (id: string) => `mi-local:camera-hd-level:${id}`
 
 function startHd(id: string) {
   const known = localStorage.getItem(hdMemo(id)) as HdLevel | null
