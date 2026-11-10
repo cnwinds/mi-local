@@ -59,13 +59,17 @@ async function recheck(camera: Camera) {
 }
 
 // The viewer opens on the SD stream the wall is already playing, which shows within a second or two.
-// HD needs its own camera session (several seconds, and some models only answer at level 3), so it
-// connects underneath and takes over once it plays; when no HD level answers, SD simply stays.
+// HD needs its own camera session, so it connects underneath once SD plays (connecting both at once
+// slows SD down) and takes over when it plays. Level 3 is tried first: it is the HD stream on models
+// that ignore level 2, and the quicker one elsewhere. Cameras whose SD is already full resolution keep
+// it, since some of them allow a single session and an HD attempt would knock SD out.
 type HdLevel = 'hd' | 'hd3'
-const HD_LEVELS: HdLevel[] = ['hd', 'hd3']
+const HD_LEVELS: HdLevel[] = ['hd3', 'hd']
+const FULL_RES_HEIGHT = 1000
 const hdTrying = ref<HdLevel | null>(null)
 const hdShown = ref(false)
 let hdQueue: HdLevel[] = []
+let hdWanted = false
 const hdMemo = (id: string) => `mi-local:camera-hd:${id}`
 
 function startHd(id: string) {
@@ -88,20 +92,33 @@ function onHdState(state: PlayerState) {
   }
 }
 
-function onSdViewState(_state: PlayerState, error: { fatal: boolean } | null) {
+function onSdViewState(state: PlayerState, error: { fatal: boolean } | null) {
   if (error?.fatal) {
     viewing.value = null
     api.cameras().then((list) => (cameras.value = list))
+  } else if (state === 'live' && hdWanted && viewing.value) {
+    hdWanted = false
+    startHd(viewing.value.id)
   }
+}
+
+function onSdResolution(_width: number, height: number) {
+  if (height >= FULL_RES_HEIGHT) hdWanted = false
+}
+
+function resetHd() {
+  hdTrying.value = null
+  hdShown.value = false
+  hdWanted = true
 }
 
 function open(camera: Camera) {
   viewing.value = camera
   viewMode.value = 'live'
-  startHd(camera.id)
+  resetHd()
 }
 
-watch(viewMode, (mode) => mode === 'live' && viewing.value && startHd(viewing.value.id))
+watch(viewMode, (mode) => mode === 'live' && resetHd())
 
 let wakeLock: WakeLockSentinel | null = null
 async function enterWall() {
@@ -201,7 +218,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="viewer-stage">
           <template v-if="viewMode === 'live'">
-            <CameraFeed v-if="!hdShown" :camera-id="viewing.id" quality="sd" fit="contain"
+            <CameraFeed v-if="!hdShown" :camera-id="viewing.id" quality="sd" fit="contain" @resolution="onSdResolution"
               @state="(s, e) => { onState(`view:${viewing!.id}`, s, null); onSdViewState(s, e) }" />
             <CameraFeed v-if="hdTrying" :key="hdTrying" class="hd-layer" :class="{ shown: hdShown }" :camera-id="viewing.id"
               :quality="hdTrying" fit="contain" :retry="false"

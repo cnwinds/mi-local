@@ -7,7 +7,15 @@ const props = withDefaults(
   defineProps<{ cameraId: string; quality: 'sd' | 'hd' | 'hd3'; fit?: 'cover' | 'contain'; retry?: boolean }>(),
   { fit: 'cover', retry: true },
 )
-const emit = defineEmits<{ state: [state: PlayerState, error: { text: string; fatal: boolean } | null] }>()
+const emit = defineEmits<{
+  state: [state: PlayerState, error: { text: string; fatal: boolean } | null]
+  resolution: [width: number, height: number]
+}>()
+const onVideoSize = () => video.value?.videoHeight && emit('resolution', video.value.videoWidth, video.value.videoHeight)
+const onFrameSize = (e: Event) => {
+  const img = e.target as HTMLImageElement
+  emit('resolution', img.naturalWidth, img.naturalHeight)
+}
 
 const video = ref<HTMLVideoElement>()
 const frame = ref('')
@@ -58,8 +66,8 @@ watch(() => [props.cameraId, props.quality], start)
 
 <template>
   <div class="feed" :class="fit">
-    <video v-show="!frame" ref="video" muted playsinline autoplay disablepictureinpicture />
-    <img v-if="frame" :src="frame" alt="" />
+    <video v-show="!frame" ref="video" muted playsinline autoplay disablepictureinpicture @loadedmetadata="onVideoSize" />
+    <img v-if="frame" :src="frame" alt="" @load.once="onFrameSize" />
     <div v-if="state === 'connecting'" class="status"><van-loading size="22px" color="rgba(255,255,255,0.8)" /></div>
     <div v-else-if="state === 'error'" class="status">
       <VideoOff :size="22" />
