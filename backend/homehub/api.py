@@ -17,7 +17,7 @@ from .hub import Hub
 from .lockin_capture import ca_pem
 from .micloud import CloudError
 from .ranges import byte_range
-from .store import panels_file, scenes_file
+from .store import floorplan_file, panels_file, scenes_file
 
 hub = Hub()
 STATIC_DIR = Path(__file__).resolve().parents[2] / "frontend" / "dist"
@@ -185,6 +185,36 @@ def set_panel(room: str, layout: list[PanelItem]):
     panels_file.save(hub.panels)
     hub.broadcast({"type": "panels"})
     return hub.panels[room]
+
+
+Point = tuple[float, float]
+
+
+class FloorRoom(BaseModel):
+    name: str = Field(min_length=1)
+    points: list[Point] = Field(min_length=3)
+    label: Point | None = None
+    outdoor: bool = False
+
+
+class Floorplan(BaseModel):
+    view: tuple[float, float, float, float]
+    rooms: list[FloorRoom]
+    devices: dict[str, Point] = {}
+    cameras: dict[str, Point] = {}
+
+
+@app.get("/api/floorplan")
+def get_floorplan():
+    return floorplan_file.load()
+
+
+@app.put("/api/floorplan")
+def set_floorplan(plan: Floorplan):
+    data = plan.model_dump()
+    floorplan_file.save(data)
+    hub.broadcast({"type": "floorplan"})
+    return data
 
 
 @app.get("/api/scenes")

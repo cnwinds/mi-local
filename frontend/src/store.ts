@@ -6,6 +6,7 @@ import {
   type Device,
   type DeviceField,
   type DeviceState,
+  type Floorplan,
   type GatewayStatus,
   type HubEvent,
   type PairingStatus,
@@ -28,6 +29,7 @@ export const gateway = ref<GatewayStatus | null>(null)
 export const gatewayName = computed(() => gateway.value?.name || '网关')
 export const panels = ref<Record<string, PanelItem[]>>({})
 export const scenes = ref<Scene[]>([])
+export const floorplan = ref<Floorplan | null>(null)
 export const voice = ref<VoiceStatus | null>(null)
 
 type EventListener = (e: HubEvent) => void
@@ -78,6 +80,11 @@ export async function loadPanels() {
 
 export async function loadScenes() {
   scenes.value = await api.scenes()
+}
+
+export async function loadFloorplan() {
+  const plan = await api.floorplan()
+  floorplan.value = plan.rooms?.length ? (plan as Floorplan) : null
 }
 
 export const deviceFields = reactive<Record<string, DeviceField[]>>({})
@@ -135,6 +142,7 @@ export function connect() {
     loadGateway()
     loadPanels()
     loadScenes()
+    loadFloorplan()
   }
   ws.onclose = () => {
     connected.value = false
@@ -162,6 +170,8 @@ export function connect() {
       loadPanels()
     } else if (data.type === 'scenes') {
       loadScenes()
+    } else if (data.type === 'floorplan') {
+      loadFloorplan()
     } else if (data.type === 'event') {
       const e: HubEvent = { ts: data.ts, device: data.device, event: data.event }
       events.value = [e, ...events.value]

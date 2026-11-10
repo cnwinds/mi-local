@@ -63,6 +63,27 @@ export interface PanelItem {
   size: PanelSize
 }
 
+/** [x, y] in the floor plan's own drawing units. */
+export type PlanPoint = [number, number]
+
+export interface FloorRoom {
+  /** Matches Device.room */
+  name: string
+  points: PlanPoint[]
+  /** Where the name and temperature sit; the room's top left corner when absent. */
+  label?: PlanPoint | null
+  /** Outside the flat, e.g. the front door: drawn dashed. */
+  outdoor?: boolean
+}
+
+export interface Floorplan {
+  /** viewBox: x, y, width, height */
+  view: [number, number, number, number]
+  rooms: FloorRoom[]
+  devices: Record<string, PlanPoint>
+  cameras: Record<string, PlanPoint>
+}
+
 export interface Scene {
   id?: string
   room: string
@@ -276,6 +297,8 @@ export const api = {
   panels: () => request<Record<string, PanelItem[]>>('GET', '/panels'),
   setPanel: (room: string, layout: PanelItem[]) =>
     request<PanelItem[]>('PUT', `/panels/${encodeURIComponent(room)}`, layout),
+  floorplan: () => request<Partial<Floorplan>>('GET', '/floorplan'),
+  setFloorplan: (plan: Floorplan) => request<Floorplan>('PUT', '/floorplan', plan),
   scenes: () => request<Scene[]>('GET', '/scenes'),
   createScene: (scene: Scene) => request<Scene>('POST', '/scenes', scene),
   updateScene: (id: string, scene: Scene) => request<Scene>('PUT', `/scenes/${id}`, scene),

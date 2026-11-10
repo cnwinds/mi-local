@@ -38,3 +38,6 @@ events_file = JsonFile("events.json", [])
 lockin_file = JsonFile("lockin.json", {})
 # [{"id": did, "name", "room", "model", "ip", "hidden"}], refreshed by every Mi Home sync
 cameras_file = JsonFile("cameras.json", [])
+# {"view": [x, y, w, h], "rooms": [{"name", "points", "label", "outdoor"}], "devices": {id: [x, y]}, "cameras": {id: [x, y]}}
+# The home's floor plan in its own drawing units; {} until one is drawn.
+floorplan_file = JsonFile("floorplan.json", {})

@@ -1,15 +1,30 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { showConfirmDialog } from 'vant'
-import { AirVent, Blinds, Lightbulb, Thermometer } from 'lucide-vue-next'
-import { deviceList, sendCommand } from '../store'
+import { AirVent, Blinds, LayoutGrid, Lightbulb, Map as MapIcon, Thermometer } from 'lucide-vue-next'
+import { deviceList, floorplan, sendCommand } from '../store'
 import { AC_MODE_NAMES, isRunning, panelRooms } from '../rooms'
 import PageHeader from '../components/PageHeader.vue'
 import RoomTile from '../components/home/RoomTile.vue'
+import FloorPlan from '../components/home/FloorPlan.vue'
 
 const now = ref(new Date())
 const timer = setInterval(() => (now.value = new Date()), 60_000)
 onBeforeUnmount(() => clearInterval(timer))
+
+// The floor plan needs room to breathe, so phones keep the room tiles.
+const wideQuery = matchMedia('(min-width: 900px)')
+const wide = ref(wideQuery.matches)
+const onWide = (e: MediaQueryListEvent) => (wide.value = e.matches)
+wideQuery.addEventListener('change', onWide)
+onBeforeUnmount(() => wideQuery.removeEventListener('change', onWide))
+const mode = ref(localStorage.getItem('home-view') === 'tiles' ? 'tiles' : 'plan')
+function setMode(m: 'plan' | 'tiles') {
+  mode.value = m
+  localStorage.setItem('home-view', m)
+}
+const canPlan = computed(() => wide.value && !!floorplan.value)
+const showPlan = computed(() => canPlan.value && mode.value === 'plan')
 const greeting = computed(() => {
   const h = now.value.getHours()
   return h < 5 ? '夜深了' : h < 11 ? '早上好' : h < 13 ? '中午好' : h < 18 ? '下午好' : '晚上好'
@@ -42,46 +57,56 @@ async function allAcOff() {
 
 <template>
   <div class="home">
-    <PageHeader :eyebrow="dateText" :title="greeting" :subtitle="headline" />
+    <PageHeader :eyebrow="dateText" :title="greeting" :subtitle="headline">
+      <div v-if="canPlan" class="view-switch">
+        <button :class="{ on: mode === 'plan' }" title="户型图" @click="setMode('plan')"><MapIcon :size="16" /></button>
+        <button :class="{ on: mode === 'tiles' }" title="房间卡片" @click="setMode('tiles')"><LayoutGrid :size="16" /></button>
+      </div>
+    </PageHeader>
 
-    <div class="stats">
-      <div class="stat card" :class="{ warm: lightsOn.length }">
-        <div class="stat-icon warm"><Lightbulb :size="18" /></div>
-        <div class="stat-body">
-          <div class="stat-value num">{{ lightsOn.length }}<small>盏</small></div>
-          <div class="stat-label">灯亮着</div>
+    <div :class="{ dash: showPlan }">
+      <div class="stats">
+        <div class="stat card" :class="{ warm: lightsOn.length }">
+          <div class="stat-icon warm"><Lightbulb :size="18" /></div>
+          <div class="stat-body">
+            <div class="stat-value num">{{ lightsOn.length }}<small>盏</small></div>
+            <div class="stat-label">灯亮着</div>
+          </div>
+          <button v-if="lightsOn.length" class="stat-action" @click="allLightsOff">全关</button>
         </div>
-        <button v-if="lightsOn.length" class="stat-action" @click="allLightsOff">全关</button>
-      </div>
-      <div class="stat card" :class="{ cool: acsOn.length }">
-        <div class="stat-icon cool"><AirVent :size="18" /></div>
-        <div class="stat-body">
-          <div class="stat-value num">{{ acsOn.length }}<small>台</small></div>
-          <div class="stat-label">空调运行</div>
+        <div class="stat card" :class="{ cool: acsOn.length }">
+          <div class="stat-icon cool"><AirVent :size="18" /></div>
+          <div class="stat-body">
+            <div class="stat-value num">{{ acsOn.length }}<small>台</small></div>
+            <div class="stat-label">空调运行</div>
+          </div>
+          <button v-if="acsOn.length" class="stat-action" @click="allAcOff">全关</button>
         </div>
-        <button v-if="acsOn.length" class="stat-action" @click="allAcOff">全关</button>
-      </div>
-      <div class="stat card">
-        <div class="stat-icon heat"><Thermometer :size="18" /></div>
-        <div class="stat-body">
-          <div class="stat-value num">{{ avgTemp ?? '--' }}<small>°C</small></div>
-          <div class="stat-label">室内温度</div>
+        <div class="stat card">
+          <div class="stat-icon heat"><Thermometer :size="18" /></div>
+          <div class="stat-body">
+            <div class="stat-value num">{{ avgTemp ?? '--' }}<small>°C</small></div>
+            <div class="stat-label">室内温度</div>
+          </div>
+        </div>
+        <div class="stat card">
+          <div class="stat-icon accent"><Blinds :size="18" /></div>
+          <div class="stat-body">
+            <div class="stat-value num">{{ curtainsOpen.length }}<small>个</small></div>
+            <div class="stat-label">窗帘开着</div>
+          </div>
         </div>
       </div>
-      <div class="stat card">
-        <div class="stat-icon accent"><Blinds :size="18" /></div>
-        <div class="stat-body">
-          <div class="stat-value num">{{ curtainsOpen.length }}<small>个</small></div>
-          <div class="stat-label">窗帘开着</div>
+  
+      <FloorPlan v-if="showPlan" class="plan" />
+      <template v-else>
+        <div class="section-label rooms-label">房间</div>
+        <div class="rooms">
+          <RoomTile v-for="room in panelRooms" :key="room" :room="room" />
         </div>
-      </div>
+        <van-empty v-if="!panelRooms.length" description="还没有设备，去「设备」页同步米家" />
+      </template>
     </div>
-
-    <div class="section-label rooms-label">房间</div>
-    <div class="rooms">
-      <RoomTile v-for="room in panelRooms" :key="room" :room="room" />
-    </div>
-    <van-empty v-if="!panelRooms.length" description="还没有设备，去「设备」页同步米家" />
   </div>
 </template>
 
@@ -207,5 +232,42 @@ async function allAcOff() {
   .rooms {
     grid-template-columns: repeat(6, minmax(0, 1fr));
   }
+}
+
+.view-switch {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.view-switch button {
+  width: 34px;
+  height: 30px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-3);
+  transition: background 0.15s, color 0.15s;
+}
+.view-switch button.on {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-1);
+}
+
+/* Floor plan on the left, the summary cards stacked beside it */
+.dash {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 210px;
+  gap: 24px;
+  align-items: start;
+  padding-top: 18px;
+}
+.dash .stats {
+  order: 2;
+  grid-template-columns: 1fr;
+  padding: 0;
 }
 </style>
