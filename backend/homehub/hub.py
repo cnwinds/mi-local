@@ -6,6 +6,7 @@ import re
 import time
 import miio
 
+from .camera_events import CameraEvents
 from .cameras import Cameras
 from .catalog import LOCAL_FIELDS, UNASSIGNED, gateway_record, merge, rooms_from_homes
 from .drivers.gateway2 import KIND_BY_MODEL, Gateway2, Gw2DeviceDriver, Gw2DoorbellDriver
@@ -69,6 +70,7 @@ class Hub:
         self.cloud_gateways: dict[str, dict] = {}
         self.voice = VoiceBridge(self)
         self.cameras = Cameras()
+        self.camera_events = CameraEvents(self.cloud)
         self.lockin = LockinCloud(lockin_file.load())
         self.lockin_capture = LockinCapture(self.setup_lockin)
 

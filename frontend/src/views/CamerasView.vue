@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Cctv, Maximize, Minimize, VideoOff, X } from 'lucide-vue-next'
 import PageHeader from '../components/PageHeader.vue'
+import CameraEvents from '../components/CameraEvents.vue'
 import CameraFeed from '../components/CameraFeed.vue'
 import { api, type Camera } from '../api'
 import type { PlayerState } from '../cameraPlayer'
@@ -14,6 +15,7 @@ const showHidden = ref(false)
 const rechecking = ref<string | null>(null)
 const viewing = ref<Camera | null>(null)
 const viewQuality = ref<'sd' | 'hd'>('hd')
+const viewMode = ref<'live' | 'events'>('live')
 const viewDowngraded = ref(false)
 const wall = ref(false)
 const root = ref<HTMLElement>()
@@ -60,6 +62,7 @@ async function recheck(camera: Camera) {
 
 function open(camera: Camera) {
   viewing.value = camera
+  viewMode.value = 'live'
   viewQuality.value = 'hd'
   viewDowngraded.value = false
 }
@@ -161,14 +164,20 @@ onBeforeUnmount(() => {
       <div v-if="viewing" class="viewer" @click.self="viewing = null">
         <div class="viewer-bar">
           <div class="viewer-title">
-            <span class="live-dot" :class="{ on: states[`view:${viewing.id}`] === 'live' }" />{{ viewing.name }}
-            <span class="quality">{{ viewQuality === 'hd' ? '高清' : '标清' }}</span>
+            <span v-if="viewMode === 'live'" class="live-dot" :class="{ on: states[`view:${viewing.id}`] === 'live' }" />
+            <span class="viewer-name">{{ viewing.name }}</span>
+            <span v-if="viewMode === 'live'" class="quality">{{ viewQuality === 'hd' ? '高清' : '标清' }}</span>
+          </div>
+          <div class="mode-switch">
+            <button :class="{ on: viewMode === 'live' }" @click="viewMode = 'live'">实时</button>
+            <button :class="{ on: viewMode === 'events' }" @click="viewMode = 'events'">回看</button>
           </div>
           <button class="round-button dark" title="关闭" @click="viewing = null"><X :size="20" /></button>
         </div>
         <div class="viewer-stage">
-          <CameraFeed :camera-id="viewing.id" :quality="viewQuality" fit="contain"
+          <CameraFeed v-if="viewMode === 'live'" :camera-id="viewing.id" :quality="viewQuality" fit="contain"
             @state="(s, e) => { onState(`view:${viewing!.id}`, s, null); onViewState(s, e) }" />
+          <CameraEvents v-else :camera-id="viewing.id" />
         </div>
       </div>
     </Teleport>
@@ -380,11 +389,40 @@ onBeforeUnmount(() => {
   padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
   color: #fff;
 }
+.viewer-bar {
+  gap: 12px;
+}
 .viewer-title {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 15px;
+  font-weight: 600;
+}
+.viewer-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mode-switch {
+  flex: none;
+  display: flex;
+  padding: 3px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.12);
+}
+.mode-switch button {
+  padding: 6px 14px;
+  border-radius: 9px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+  transition: background 0.2s, color 0.2s;
+}
+.mode-switch button.on {
+  background: rgba(255, 255, 255, 0.92);
+  color: #111;
   font-weight: 600;
 }
 .quality {

@@ -8,6 +8,7 @@ import json
 import os
 import random
 import time
+from urllib.parse import urlparse
 
 import requests
 from Crypto.Cipher import ARC4
@@ -34,8 +35,8 @@ def _signed_nonce(ssecurity: str, nonce: str) -> str:
     return base64.b64encode(hashlib.sha256(base64.b64decode(ssecurity) + base64.b64decode(nonce)).digest()).decode()
 
 
-def _enc_signature(path: str, signed_nonce: str, params: dict) -> str:
-    parts = ["POST", path, *(f"{k}={v}" for k, v in params.items()), signed_nonce]
+def _enc_signature(path: str, signed_nonce: str, params: dict, method: str = "POST") -> str:
+    parts = [method, path, *(f"{k}={v}" for k, v in params.items()), signed_nonce]
     return base64.b64encode(hashlib.sha1("&".join(parts).encode()).digest()).decode()
 
 
@@ -107,25 +108,32 @@ class MiCloud:
         self._finish_login(data["ssecurity"], data["location"])
 
     # --- API ------------------------------------------------------------
-    def call(self, path: str, payload: dict, _retry=True) -> dict:
-        if not self.logged_in:
-            raise CloudError("not logged in")
+    def _rc4_params(self, path: str, payload: dict, method: str) -> tuple[dict, str]:
+        """Encrypted request parameters, and the signed nonce that decrypts the reply."""
         ssecurity = self.data["ssecurity"]
         millis = int(time.time() * 1000)
         nonce = base64.b64encode(os.urandom(8) + (millis // 60000).to_bytes(4, "big")).decode()
         signed = _signed_nonce(ssecurity, nonce)
-        params = {"data": json.dumps(payload)}
-        params["rc4_hash__"] = _enc_signature(path, signed, params)
+        params = {"data": json.dumps(payload, separators=(",", ":") if method == "GET" else None)}
+        params["rc4_hash__"] = _enc_signature(path, signed, params, method)
         params = {k: base64.b64encode(_rc4(signed, v.encode())).decode() for k, v in params.items()}
-        params.update(signature=_enc_signature(path, signed, params), ssecurity=ssecurity, _nonce=nonce)
+        params.update(signature=_enc_signature(path, signed, params, method), ssecurity=ssecurity, _nonce=nonce)
+        return params, signed
+
+    @property
+    def _cookies(self) -> dict:
+        return {"userId": self.data["user_id"], "serviceToken": self.data["service_token"],
+                "yetAnotherServiceToken": self.data["service_token"], "locale": "zh_CN", "channel": "MI_APP_STORE"}
+
+    def call(self, path: str, payload: dict, _retry=True) -> dict:
+        if not self.logged_in:
+            raise CloudError("not logged in")
+        params, signed = self._rc4_params(path, payload, "POST")
         resp = self._http.post(API + path, params=params, timeout=15, headers={
             "Accept-Encoding": "identity", "User-Agent": self._agent,
             "Content-Type": "application/x-www-form-urlencoded",
             "x-xiaomi-protocal-flag-cli": "PROTOCAL-HTTP2", "MIOT-ENCRYPT-ALGORITHM": "ENCRYPT-RC4",
-        }, cookies={
-            "userId": self.data["user_id"], "serviceToken": self.data["service_token"],
-            "yetAnotherServiceToken": self.data["service_token"], "locale": "zh_CN", "channel": "MI_APP_STORE",
-        })
+        }, cookies=self._cookies)
         if resp.status_code in (401, 403) and _retry:
             self.renew()
             return self.call(path, payload, _retry=False)
@@ -138,6 +146,41 @@ class MiCloud:
                 return self.call(path, payload, _retry=False)
             raise CloudError(f"API error {result.get('code')}: {result.get('message')}")
         return result["result"]
+
+    # --- camera services (business/processor.smartcamera.api.io.mi.com) ---------------------
+    def camera_api(self, url: str, payload: dict, _retry=True) -> dict:
+        """Signed GET to a camera service; replies come RC4-encrypted like the main API."""
+        if not self.logged_in:
+            raise CloudError("not logged in")
+        params, signed = self._rc4_params(urlparse(url).path, payload, "GET")
+        resp = self._http.get(url, params=params, cookies=self._cookies, timeout=20,
+                              headers={"MIOT-ENCRYPT-ALGORITHM": "ENCRYPT-RC4", "Accept-Encoding": "identity"})
+        if resp.status_code in (401, 403) and _retry:
+            self.renew()
+            return self.camera_api(url, payload, _retry=False)
+        if resp.status_code != 200:
+            raise CloudError(f"HTTP {resp.status_code}")
+        result = json.loads(resp.text) if '"message"' in resp.text[:200] else json.loads(
+            _rc4(signed, base64.b64decode(resp.text)))
+        if result.get("code") not in (0, None):
+            raise CloudError(f"API error {result.get('code')}: {result.get('message')}")
+        return result.get("data") or {}
+
+    def camera_fetch(self, url: str, payload: dict | None = None, _retry=True) -> bytes:
+        """Raw GET for camera media: a signed service URL when payload is given, else a pre-signed one."""
+        if not self.logged_in:
+            raise CloudError("not logged in")
+        params = None
+        if payload is not None:
+            params, _ = self._rc4_params(urlparse(url).path, payload, "GET")
+            params["yetAnotherServiceToken"] = self.data["service_token"]
+        resp = self._http.get(url, params=params, cookies=self._cookies, timeout=30)
+        if resp.status_code in (401, 403) and _retry:
+            self.renew()
+            return self.camera_fetch(url, payload, _retry=False)
+        if resp.status_code != 200 or int(resp.headers.get("x-xiaomi-status-code", 200)) >= 400:
+            raise CloudError(f"HTTP {resp.status_code}")
+        return resp.content
 
     def fetch_homes(self) -> list[dict]:
         """Every home with its rooms and devices: [{id, name, rooms: [{name, dids}], devices: [...]}]."""

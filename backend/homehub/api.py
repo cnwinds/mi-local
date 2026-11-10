@@ -5,8 +5,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
 
+import requests
 import segno
-from fastapi import FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -14,6 +15,8 @@ from pydantic import BaseModel, Field
 from .cameras import relay, stream_name
 from .hub import Hub
 from .lockin_capture import ca_pem
+from .micloud import CloudError
+from .ranges import byte_range
 from .store import panels_file, scenes_file
 
 hub = Hub()
@@ -416,6 +419,61 @@ def update_camera(camera_id: str, body: CameraUpdate):
     except KeyError:
         raise HTTPException(404, "没有这个摄像头")
     return hub.cameras.public()
+
+
+def _camera(camera_id: str) -> dict:
+    camera = hub.cameras.get(camera_id)
+    if not camera:
+        raise HTTPException(404, "没有这个摄像头")
+    return camera
+
+
+async def _cloud_media(fn, *args):
+    if not hub.cloud.logged_in:
+        raise HTTPException(409, "还没有登录米家账号")
+    try:
+        return await asyncio.to_thread(fn, *args)
+    except KeyError:
+        raise HTTPException(404, "没有这条记录，刷新列表再试")
+    except (CloudError, requests.RequestException, ValueError) as e:
+        raise HTTPException(502, f"米家云暂时取不到：{e}")
+
+
+def _ranged(request: Request, body: bytes, media_type: str) -> Response:
+    """Byte ranges matter: Safari will not play an <video> source that ignores them."""
+    headers = {"Accept-Ranges": "bytes", "Cache-Control": "private, max-age=86400"}
+    size = len(body)
+    try:
+        span = byte_range(request.headers.get("range", ""), size)
+    except ValueError:
+        return Response(status_code=416, headers={"Content-Range": f"bytes */{size}"})
+    if not span:
+        return Response(body, media_type=media_type, headers=headers)
+    start, end = span
+    return Response(body[start:end + 1], status_code=206, media_type=media_type,
+                    headers={**headers, "Content-Range": f"bytes {start}-{end}/{size}"})
+
+
+@app.get("/api/cameras/{camera_id}/events")
+async def camera_events(camera_id: str, before: int | None = None, limit: int = 30):
+    return await _cloud_media(hub.camera_events.list, _camera(camera_id), before, min(max(limit, 1), 50))
+
+
+@app.get("/api/cameras/{camera_id}/events/{file_id}/thumb.jpg")
+async def camera_event_thumb(camera_id: str, file_id: str, request: Request):
+    image = await _cloud_media(hub.camera_events.thumbnail, _camera(camera_id), file_id)
+    return _ranged(request, image, "image/jpeg")
+
+
+@app.get("/api/cameras/{camera_id}/events/{file_id}/clip")
+async def camera_event_clip(camera_id: str, file_id: str):
+    return await _cloud_media(hub.camera_events.clip, _camera(camera_id), file_id)
+
+
+@app.get("/api/cameras/{camera_id}/events/{file_id}/clip/{index}.mp4")
+async def camera_event_clip_part(camera_id: str, file_id: str, index: int, request: Request):
+    video = await _cloud_media(hub.camera_events.clip_part, _camera(camera_id), file_id, index)
+    return _ranged(request, video, "video/mp4")
 
 
 @app.websocket("/api/cameras/{camera_id}/ws")

@@ -140,6 +140,15 @@ export interface Camera {
   unsupported: boolean
 }
 
+/** A motion event the camera uploaded to the Mi Home cloud (看家). */
+export interface CameraEvent {
+  id: string
+  /** unix seconds */
+  time: number
+  kind: 'person' | 'face' | 'cry' | 'pet' | 'sound' | 'motion' | 'other'
+  duration: number
+}
+
 export interface LockinCapture {
   active: boolean
   port: number
@@ -279,6 +288,10 @@ export const api = {
   cameras: () => request<Camera[]>('GET', '/cameras'),
   updateCamera: (id: string, patch: { hidden?: boolean; unsupported?: boolean }) =>
     request<Camera[]>('PATCH', `/cameras/${id}`, patch),
+  cameraEvents: (id: string, before?: number) =>
+    request<{ items: CameraEvent[]; more: boolean }>('GET', `/cameras/${id}/events${before ? `?before=${before}` : ''}`),
+  cameraEventClip: (id: string, eventId: string) =>
+    request<{ parts: number[] }>('GET', `/cameras/${id}/events/${eventId}/clip`),
   voice: () => request<VoiceStatus>('GET', '/voice'),
   setVoice: (enabled: boolean) => request<VoiceStatus>('PUT', '/voice', { enabled }),
 }
