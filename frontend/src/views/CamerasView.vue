@@ -6,7 +6,7 @@ import CameraEvents from '../components/CameraEvents.vue'
 import CameraFeed from '../components/CameraFeed.vue'
 import { api, type Camera } from '../api'
 import type { PlayerState } from '../cameraPlayer'
-import { rooms } from '../store'
+import { can, rooms } from '../store'
 
 const cameras = ref<Camera[]>([])
 const loaded = ref(false)
@@ -185,14 +185,14 @@ onBeforeUnmount(() => {
             <div>{{ c.name }}</div>
             <small>这个型号还不能在本地查看，米家 App 里照常能看</small>
           </div>
-          <button :disabled="rechecking === c.id" @click="recheck(c)">{{ rechecking === c.id ? '检测中' : '重新检测' }}</button>
+          <button v-if="can('admin')" :disabled="rechecking === c.id" @click="recheck(c)">{{ rechecking === c.id ? '检测中' : '重新检测' }}</button>
         </div>
       </div>
     </section>
 
     <button v-if="wall" class="round-button wall-exit" title="退出全屏" @click="exitWall"><Minimize :size="19" /></button>
 
-    <section v-if="hidden.length && !wall" class="hidden-section">
+    <section v-if="hidden.length && !wall && can('admin')" class="hidden-section">
       <button class="hidden-toggle" @click="showHidden = !showHidden">已隐藏 {{ hidden.length }} 个摄像头</button>
       <div v-if="showHidden" class="hidden-list card">
         <div v-for="c in hidden" :key="c.id" class="hidden-row">

@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { BellRing, Power } from 'lucide-vue-next'
 import type { Device } from '../api'
-import { devices, sendCommand } from '../store'
+import { can, devices, sendCommand } from '../store'
 import DeviceIcon from './DeviceIcon.vue'
 import AcTile from './tiles/AcTile.vue'
 import CurtainTile from './tiles/CurtainTile.vue'
@@ -25,6 +25,7 @@ const TILES = { ac: AcTile, curtain: CurtainTile, bath_heater: BathHeaterTile, a
 const tile = computed(() => (device.value ? TILES[device.value.kind] : undefined))
 
 const controllable = computed(() => !!device.value && !['switch', 'gateway'].includes(device.value.kind))
+const admin = can('admin')
 const view = ref<'control' | 'settings'>('control')
 watch(
   () => props.deviceId,
@@ -50,11 +51,18 @@ function cmd(action: string, value?: unknown, optimistic?: Record<string, unknow
 <template>
   <van-popup v-model:show="show" position="bottom" round closeable class="device-sheet">
     <div v-if="device" class="body">
-      <div v-if="controllable" class="tabs">
+      <div v-if="controllable && admin" class="tabs">
         <button :class="{ on: view === 'control' }" @click="view = 'control'">控制</button>
         <button :class="{ on: view === 'settings' }" @click="view = 'settings'">设置</button>
       </div>
-      <template v-if="view === 'settings' || !controllable">
+      <div v-if="!controllable && !admin" class="head">
+        <DeviceIcon :kind="device.kind" :model="device.model" :name="device.name" :size="48" />
+        <div>
+          <div class="title">{{ device.name }}</div>
+          <div class="sub">{{ device.room }} · {{ s.online ? '在线' : '离线' }}<template v-if="s.battery !== undefined"> · 电量 {{ s.battery }}%</template></div>
+        </div>
+      </div>
+      <template v-else-if="view === 'settings' || !controllable">
         <div class="head">
           <DeviceIcon :kind="device.kind" :model="device.model" :name="device.name" :size="48" />
           <div>

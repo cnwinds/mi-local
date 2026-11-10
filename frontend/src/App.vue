@@ -7,7 +7,9 @@ import RoomPanel from './views/RoomPanel.vue'
 import WallHome from './views/WallHome.vue'
 import SwitchesView from './views/SwitchesView.vue'
 import DevicesView from './views/DevicesView.vue'
-import { connected } from './store'
+import PairView from './views/PairView.vue'
+import type { Permission } from './api'
+import { can, connected, me } from './store'
 import { panelRooms, roomActive } from './rooms'
 import { goHome, openRoom, route, switchRoom } from './router'
 
@@ -17,12 +19,13 @@ watch(
   (name) => name !== 'home' && (tab.value = 'home'),
 )
 
-const TABS = [
-  { name: 'home', label: '家', icon: House },
-  { name: 'cameras', label: '监控', icon: Cctv },
-  { name: 'switches', label: '开关', icon: ToggleRight },
-  { name: 'devices', label: '设备', icon: LayoutGrid },
+const ALL_TABS: { name: string; label: string; icon: typeof House; needs: Permission }[] = [
+  { name: 'home', label: '家', icon: House, needs: 'view' },
+  { name: 'cameras', label: '监控', icon: Cctv, needs: 'cameras' },
+  { name: 'switches', label: '开关', icon: ToggleRight, needs: 'admin' },
+  { name: 'devices', label: '设备', icon: LayoutGrid, needs: 'history' },
 ]
+const TABS = computed(() => ALL_TABS.filter((t) => can(t.needs)))
 
 function select(name: string) {
   if (name === 'home' && tab.value === 'home' && route.value.name === 'room') goHome()
@@ -38,7 +41,9 @@ function pickRoom(room: string) {
 </script>
 
 <template>
-  <RoomPanel v-if="route.name === 'wall'" :room="route.room" wall />
+  <div v-if="!me" />
+  <PairView v-else-if="!me.paired" />
+  <RoomPanel v-else-if="route.name === 'wall'" :room="route.room" wall />
   <WallHome v-else-if="route.name === 'wall-home'" />
   <div v-else class="shell">
     <aside class="sidebar">
@@ -74,7 +79,7 @@ function pickRoom(room: string) {
       <DevicesView v-if="tab === 'devices'" />
     </main>
 
-    <nav class="tabbar">
+    <nav v-if="TABS.length > 1" class="tabbar">
       <button v-for="t in TABS" :key="t.name" class="tab" :class="{ selected: tab === t.name }" @click="select(t.name)">
         <component :is="t.icon" :size="22" :stroke-width="tab === t.name ? 2.3 : 1.8" />
         <span>{{ t.label }}</span>

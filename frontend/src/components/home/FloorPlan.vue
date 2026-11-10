@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, type Compon
 import { showFailToast, showToast } from 'vant'
 import { Cctv, Check, Droplet, Flame, Move, Snowflake, Sparkles, Wind, X } from 'lucide-vue-next'
 import { api, type AcMode, type Camera, type Device, type FloorRoom, type PlanPoint } from '../../api'
-import { deviceList, floorplan } from '../../store'
+import { can, deviceList, floorplan } from '../../store'
 import { deviceStatus, isActive, panelRooms, quickToggle, shortName } from '../../rooms'
 import { openRoom } from '../../router'
 import DeviceIcon from '../DeviceIcon.vue'
@@ -58,7 +58,7 @@ function autoSpots(r: FloorRoom, n: number): PlanPoint[] {
 }
 
 const cameras = ref<Camera[]>([])
-onMounted(async () => (cameras.value = await api.cameras().catch(() => [])))
+onMounted(async () => can('cameras') && (cameras.value = await api.cameras().catch(() => [])))
 
 type Marker = { key: string; room: string; pos: PlanPoint } & (
   | { type: 'device'; device: Device }
@@ -352,7 +352,7 @@ const stageWidth = computed(() =>
         </div>
       </div>
 
-      <div v-if="!compact && !wall" class="tools">
+      <div v-if="!compact && !wall && can('admin')" class="tools">
         <template v-if="editing">
           <span class="hint">拖动图标调整位置，按住 Ctrl 对齐</span>
           <button class="tool" title="取消" @click="cancelEdit"><X :size="16" /></button>

@@ -8,10 +8,13 @@ from typing import Any, Literal
 import requests
 import segno
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.datastructures import Headers
+from starlette.requests import cookie_parser
 
+from .auth import COOKIE, COOKIE_MAX_AGE, PERMISSIONS, Auth, PairError, TooManyAttempts, required_permission
 from .cameras import relay, stream_name
 from .hub import Hub
 from .lockin_capture import ca_pem
@@ -20,17 +23,150 @@ from .ranges import byte_range
 from .store import floorplan_file, panels_file, scenes_file
 
 hub = Hub()
+auth = Auth()
 STATIC_DIR = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     await hub.start()
+    auth.ensure_bootstrap()
     yield
     await hub.stop()
 
 
-app = FastAPI(title="HomeHub", lifespan=lifespan)
+# No /docs or /openapi.json: they sit outside /api, where pairing is not required.
+app = FastAPI(title="HomeHub", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+
+
+def _client_ip(scope) -> str:
+    client = scope.get("client")
+    return client[0] if client else ""
+
+
+def _same_origin(headers: Headers) -> bool:
+    """Blocks pages on other sites from driving the hub through a paired browser."""
+    origin = headers.get("origin")
+    if not origin:
+        return True
+    return origin.split("://", 1)[-1].rstrip("/") == headers.get("host", "")
+
+
+async def _deny(scope, receive, send, status: int, detail: str) -> None:
+    if scope["type"] == "websocket":
+        await receive()
+        await send({"type": "websocket.close", "code": 4401 if status == 401 else 4403})
+        return
+    await JSONResponse({"detail": detail}, status_code=status)(scope, receive, send)
+
+
+class AuthMiddleware:
+    """Checks every HTTP request and WebSocket against the paired devices and their roles."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] not in ("http", "websocket"):
+            return await self.app(scope, receive, send)
+        method = scope.get("method", "GET")
+        headers = Headers(scope=scope)
+        if (scope["type"] == "websocket" or method in UNSAFE_METHODS) and not _same_origin(headers):
+            return await _deny(scope, receive, send, 403, "不接受来自其他网站的请求")
+        need = required_permission(method, scope["path"])
+        if need is None:
+            return await self.app(scope, receive, send)
+        device = auth.authenticate(cookie_parser(headers.get("cookie", "")).get(COOKIE, ""), _client_ip(scope))
+        if not device:
+            return await _deny(scope, receive, send, 401, "这台设备还没有配对")
+        if need not in PERMISSIONS[device["role"]]:
+            return await _deny(scope, receive, send, 403, "这台设备没有这个权限")
+        scope.setdefault("state", {})["device"] = device
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(AuthMiddleware)
+
+
+class PairBody(BaseModel):
+    code: str = Field(min_length=4, max_length=20)
+    name: str = Field("", max_length=40)
+
+
+class CodeRequest(BaseModel):
+    role: Literal["admin", "family", "panel"]
+
+
+class AuthDevicePatch(BaseModel):
+    name: str | None = Field(None, max_length=40)
+    role: Literal["admin", "family", "panel"] | None = None
+
+
+# Live /api/ws queues by paired device, so revoking a device also cuts its push channel.
+ws_sessions: dict[asyncio.Queue, str] = {}
+
+
+def _current(request: Request) -> dict:
+    return request.state.device
+
+
+@app.get("/api/auth/me")
+def auth_me(request: Request):
+    device = auth.authenticate(request.cookies.get(COOKIE, ""), _client_ip(request.scope))
+    if not device:
+        return {"paired": False}
+    return {"paired": True, **auth.public(device, device["id"])}
+
+
+@app.post("/api/auth/pair")
+def auth_pair(body: PairBody, request: Request, response: Response):
+    try:
+        device, token = auth.pair(body.code, body.name, _client_ip(request.scope))
+    except TooManyAttempts:
+        raise HTTPException(429, "试错次数太多，请 10 分钟后再试")
+    except PairError as e:
+        raise HTTPException(400, str(e))
+    response.set_cookie(COOKIE, token, max_age=COOKIE_MAX_AGE, httponly=True, samesite="strict", path="/")
+    return {"paired": True, **auth.public(device, device["id"])}
+
+
+@app.get("/api/auth/devices")
+def auth_devices(request: Request):
+    me = _current(request)["id"]
+    return [auth.public(d, me) for d in auth.devices]
+
+
+@app.post("/api/auth/codes")
+def auth_code(body: CodeRequest):
+    return auth.create_code(body.role)
+
+
+@app.patch("/api/auth/devices/{device_id}")
+def auth_update(device_id: str, patch: AuthDevicePatch, request: Request):
+    try:
+        device = auth.update(device_id, patch.name, patch.role)
+    except KeyError:
+        raise HTTPException(404, "没有这台设备")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return auth.public(device, _current(request)["id"])
+
+
+@app.delete("/api/auth/devices/{device_id}")
+def auth_revoke(device_id: str, request: Request, response: Response):
+    try:
+        auth.revoke(device_id)
+    except KeyError:
+        raise HTTPException(404, "没有这台设备")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    for queue, owner in list(ws_sessions.items()):
+        if owner == device_id:
+            queue.put_nowait(None)
+    if device_id == _current(request)["id"]:
+        response.delete_cookie(COOKIE, path="/")
+    return {"ok": True}
 
 
 class DevicePatch(BaseModel):
@@ -524,13 +660,16 @@ async def websocket(ws: WebSocket):
     await ws.accept()
     queue: asyncio.Queue = asyncio.Queue()
     hub.subscribers.add(queue)
+    ws_sessions[queue] = ws.scope["state"]["device"]["id"]
     try:
-        while True:
-            await ws.send_json(await queue.get())
+        while (message := await queue.get()) is not None:
+            await ws.send_json(message)
+        await ws.close(code=4401)
     except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
         hub.subscribers.discard(queue)
+        ws_sessions.pop(queue, None)
 
 
 if STATIC_DIR.exists():

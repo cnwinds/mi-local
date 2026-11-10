@@ -9,12 +9,37 @@ import {
   type Floorplan,
   type GatewayStatus,
   type HubEvent,
+  type Me,
   type PairingStatus,
   type PanelItem,
+  type Permission,
+  type Role,
   type Rule,
   type Scene,
   type VoiceStatus,
+  onUnauthorized,
 } from './api'
+
+/** null until the hub has answered who this browser is. */
+export const me = ref<Me | null>(null)
+// Mirrors the hub's roles; the hub enforces them, this only decides what to show.
+const PERMISSIONS: Record<Role, Permission[]> = {
+  admin: ['view', 'control', 'cameras', 'history', 'admin'],
+  family: ['view', 'control', 'cameras', 'history'],
+  panel: ['view', 'control'],
+}
+export const can = (p: Permission) => !!me.value?.paired && PERMISSIONS[me.value.role].includes(p)
+onUnauthorized(() => (me.value = { paired: false }))
+
+/** Asks the hub who we are; keeps the last answer while it is unreachable. */
+export async function checkAuth(): Promise<boolean> {
+  try {
+    me.value = await api.me()
+  } catch {
+    if (!me.value) return false
+  }
+  return true
+}
 
 export const devices = reactive<Record<string, Device>>({})
 export const rooms = ref<string[]>([])
@@ -134,19 +159,24 @@ export async function sendCommand(id: string, action: string, value?: unknown, o
 export function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws'
   const ws = new WebSocket(`${proto}://${location.host}/api/ws`)
+  const admin = can('admin')
   ws.onopen = () => {
     connected.value = true
     loadDevices()
-    loadCloud()
-    loadVoice()
-    loadGateway()
     loadPanels()
     loadScenes()
     loadFloorplan()
+    if (admin) {
+      loadCloud()
+      loadVoice()
+      loadGateway()
+    }
   }
-  ws.onclose = () => {
+  // A refused or dropped socket may mean this browser was revoked: ask before trying again.
+  ws.onclose = async () => {
     connected.value = false
-    setTimeout(connect, 2000)
+    await checkAuth()
+    if (me.value?.paired) setTimeout(connect, 2000)
   }
   ws.onmessage = (msg) => {
     const data = JSON.parse(msg.data)
@@ -157,7 +187,9 @@ export function connect() {
       ensureFields(data.id)
     } else if (data.type === 'devices') {
       loadDevices()
-      loadVoice()
+      if (admin) loadVoice()
+    } else if (!admin && ['cloud', 'voice', 'gateway', 'pairing'].includes(data.type)) {
+      // Settings the hub only shows to admins.
     } else if (data.type === 'cloud') {
       loadCloud()
     } else if (data.type === 'voice') {

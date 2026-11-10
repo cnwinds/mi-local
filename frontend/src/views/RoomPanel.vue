@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch, type Component } from
 import { showToast } from 'vant'
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Ellipsis, Moon, Plus, Power, Sun, Sunset, ToggleRight } from 'lucide-vue-next'
 import { api, type Device, type Scene } from '../api'
-import { deviceList, devices, rules, loadRules, scenes } from '../store'
+import { can, deviceList, devices, rules, loadRules, scenes } from '../store'
 import { BUILTIN_ACTIONS, lightsOf, panelLayout, panelRooms, roomDevices, roomSummary } from '../rooms'
 import { goHome, switchRoom, wallUrl } from '../router'
 import { fullName } from '../naming'
@@ -19,6 +19,7 @@ import PanelEditor from '../components/PanelEditor.vue'
 import SceneEditor from '../components/SceneEditor.vue'
 
 const props = defineProps<{ room: string; wall?: boolean }>()
+const admin = can('admin')
 
 const ACTION_ICONS: Record<string, Component> = { all_off: Power, bright: Sun, soft: Sunset, night: Moon }
 
@@ -58,6 +59,7 @@ let pressTimer: ReturnType<typeof setTimeout> | undefined
 let pressed = false
 function scenePress(scene: Scene) {
   pressed = false
+  if (!admin) return
   pressTimer = setTimeout(() => {
     pressed = true
     editingScene.value = scene
@@ -84,12 +86,11 @@ const switches = computed(() =>
     }),
 )
 const showSwitches = ref(false)
-onMounted(() => !rules.value.length && loadRules())
+onMounted(() => admin && !rules.value.length && loadRules())
 
 const showMenu = ref(false)
 const menuActions = computed(() => [
-  { name: '编辑面板' },
-  { name: '新建快捷操作' },
+  ...(admin ? [{ name: '编辑面板' }, { name: '新建快捷操作' }] : []),
   { name: props.wall ? '退出墙面模式' : '用作墙面面板', subname: props.wall ? '' : '把这台手机或平板固定在墙上，常亮显示这个房间' },
 ])
 
@@ -173,11 +174,11 @@ onBeforeUnmount(() => {
           <button v-for="a in builtins" :key="a.key" class="action" :class="a.key" @click="a.run(all)">
             <component :is="ACTION_ICONS[a.key]" :size="17" /><span>{{ a.name }}</span>
           </button>
-          <button v-for="s in roomScenes" :key="s.id" class="action scene" title="长按编辑" @pointerdown="scenePress(s)"
+          <button v-for="s in roomScenes" :key="s.id" class="action scene" :title="admin ? '长按编辑' : s.name" @pointerdown="scenePress(s)"
             @pointerup="sceneRelease(s)" @pointerleave="cancelPress" @contextmenu.prevent>
             <span class="emoji">{{ s.icon }}</span><span>{{ s.name }}</span>
           </button>
-          <button class="action add" @click="editingScene = newScene()"><Plus :size="17" /><span>快捷操作</span></button>
+          <button v-if="admin" class="action add" @click="editingScene = newScene()"><Plus :size="17" /><span>快捷操作</span></button>
         </div>
 
         <div class="grid">
@@ -202,7 +203,7 @@ onBeforeUnmount(() => {
           </div>
         </template>
 
-        <template v-if="switches.length && !wall">
+        <template v-if="admin && switches.length && !wall">
           <button class="section-label toggle" @click="showSwitches = !showSwitches">
             <ToggleRight :size="15" />无线开关 · {{ switches.length }}
             <component :is="showSwitches ? ChevronUp : ChevronDown" :size="15" />
@@ -214,7 +215,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
         </template>
-        <div v-if="roomScenes.length" class="hint">长按快捷操作可以编辑或删除</div>
+        <div v-if="admin && roomScenes.length" class="hint">长按快捷操作可以编辑或删除</div>
       </aside>
     </div>
 

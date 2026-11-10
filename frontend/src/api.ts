@@ -253,12 +253,36 @@ export interface VoiceStatus {
   last: { ts: number; speaker: string; query: string; reply: string } | null
 }
 
+export type Role = 'admin' | 'family' | 'panel'
+export type Permission = 'view' | 'control' | 'cameras' | 'history' | 'admin'
+
+/** A browser paired with the hub. */
+export interface AuthDevice {
+  id: string
+  name: string
+  role: Role
+  created: number
+  last_seen: number | null
+  ip: string
+  /** The device making the request */
+  current: boolean
+}
+
+export type Me = { paired: false } | ({ paired: true } & AuthDevice)
+
+let unauthorized: (() => void) | null = null
+/** Called when the hub no longer recognizes this browser, e.g. after it was revoked. */
+export function onUnauthorized(fn: () => void) {
+  unauthorized = fn
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method,
     headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
+  if (res.status === 401) unauthorized?.()
   if (!res.ok) {
     const detail = await res.json().catch(() => ({}))
     throw new Error(detail.detail ?? res.statusText)
@@ -267,6 +291,13 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 }
 
 export const api = {
+  me: () => request<Me>('GET', '/auth/me'),
+  pair: (code: string, name: string) => request<Me>('POST', '/auth/pair', { code, name }),
+  authDevices: () => request<AuthDevice[]>('GET', '/auth/devices'),
+  createPairCode: (role: Role) => request<{ code: string; role: Role; expires_in: number }>('POST', '/auth/codes', { role }),
+  updateAuthDevice: (id: string, patch: { name?: string; role?: Role }) =>
+    request<AuthDevice>('PATCH', `/auth/devices/${encodeURIComponent(id)}`, patch),
+  revokeAuthDevice: (id: string) => request<unknown>('DELETE', `/auth/devices/${encodeURIComponent(id)}`),
   devices: () => request<Device[]>('GET', '/devices'),
   patchDevice: (id: string, patch: DevicePatch) =>
     request<Device>('PATCH', `/devices/${encodeURIComponent(id)}`, patch),

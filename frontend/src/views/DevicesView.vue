@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import type { Device } from '../api'
-import { EVENT_NAMES, deviceList, devices, events, eventsTotal, gateway, loadEvents, loadOlderEvents } from '../store'
+import { EVENT_NAMES, can, deviceList, devices, events, eventsTotal, gateway, loadEvents, loadOlderEvents } from '../store'
 import { deviceStatus } from '../rooms'
+import AccessCard from '../components/AccessCard.vue'
 import CloudCard from '../components/CloudCard.vue'
 import DeviceIcon from '../components/DeviceIcon.vue'
 import DeviceSheet from '../components/DeviceSheet.vue'
@@ -13,7 +14,9 @@ import AddDeviceSheet from '../components/add/AddDeviceSheet.vue'
 import StatsPanel from '../components/StatsPanel.vue'
 import { ChevronRight, EyeOff, Plus } from 'lucide-vue-next'
 
-const tab = ref('devices')
+// Family members see the history here; managing devices is for admins.
+const admin = can('admin')
+const tab = ref(admin ? 'devices' : 'stats')
 const detailId = ref<string | null>(null)
 const showAdd = ref(false)
 const loadingOlder = ref(false)
@@ -55,14 +58,15 @@ function eventTime(ts: number) {
 <template>
   <div class="devices">
     <PageHeader title="设备" :subtitle="`共 ${deviceList.length} 台 · ${onlineCount} 台在线`">
-      <button class="add-btn" @click="showAdd = true"><Plus :size="18" :stroke-width="2.4" />添加设备</button>
+      <button v-if="admin" class="add-btn" @click="showAdd = true"><Plus :size="18" :stroke-width="2.4" />添加设备</button>
     </PageHeader>
-    <div class="top-cards">
+    <div v-if="admin" class="top-cards">
       <CloudCard />
       <VoiceCard />
+      <AccessCard />
     </div>
     <van-tabs v-model:active="tab" class="tabs">
-      <van-tab title="设备管理" name="devices">
+      <van-tab v-if="admin" title="设备管理" name="devices">
         <div class="groups">
           <section v-if="gateway" class="group">
             <div class="section-label">网关</div>
@@ -101,7 +105,7 @@ function eventTime(ts: number) {
     </van-tabs>
 
     <DeviceSheet :device-id="detailId" @close="detailId = null" />
-    <AddDeviceSheet :show="showAdd" @close="showAdd = false" @edit="edit" />
+    <AddDeviceSheet v-if="admin" :show="showAdd" @close="showAdd = false" @edit="edit" />
   </div>
 </template>
 
