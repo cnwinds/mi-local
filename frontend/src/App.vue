@@ -4,6 +4,7 @@ import { Cctv, House, LayoutGrid, ToggleRight, Wifi, WifiOff } from 'lucide-vue-
 import CamerasView from './views/CamerasView.vue'
 import HomeView from './views/HomeView.vue'
 import RoomPanel from './views/RoomPanel.vue'
+import WallHome from './views/WallHome.vue'
 import SwitchesView from './views/SwitchesView.vue'
 import DevicesView from './views/DevicesView.vue'
 import { connected } from './store'
@@ -38,6 +39,7 @@ function pickRoom(room: string) {
 
 <template>
   <RoomPanel v-if="route.name === 'wall'" :room="route.room" wall />
+  <WallHome v-else-if="route.name === 'wall-home'" />
   <div v-else class="shell">
     <aside class="sidebar">
       <div class="brand">

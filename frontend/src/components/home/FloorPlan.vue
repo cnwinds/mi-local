@@ -20,8 +20,11 @@ const onPlan = (d: Device) => PLAN_KINDS.has(d.kind) && !d.hidden && !d.model.in
 const AUTO_GAP = 34
 const LONG_PRESS_MS = 550
 
-/** compact: a phone-sized overview where devices shrink to dots and a tap opens the room. */
-const props = defineProps<{ compact?: boolean }>()
+/**
+ * compact: a phone-sized overview where devices shrink to dots and a tap opens the room.
+ * wall: full screen on a wall tablet; devices work, but nothing leaves the plan or edits it.
+ */
+const props = defineProps<{ compact?: boolean; wall?: boolean }>()
 
 const plan = computed(() => floorplan.value!)
 const view = computed(() => plan.value.view)
@@ -102,7 +105,7 @@ function roomTone(room: string) {
 const roomTemp = (room: string) =>
   devicesIn(room).find((m) => m.device.state.online && m.device.state.temperature !== undefined)?.device.state.temperature
 const roomAlert = (room: string) => devicesIn(room).some((m) => m.device.kind === 'lock' && isActive(m.device))
-const clickable = (room: string) => !editing.value && panelRooms.value.includes(room)
+const clickable = (room: string) => !editing.value && !props.wall && panelRooms.value.includes(room)
 const pickRoom = (room: string) => clickable(room) && openRoom(room)
 
 const tone = (d: Device) => (d.kind === 'ac' && d.state.mode === 'heat' ? 'heat' : TONES[d.kind] ?? 'accent')
@@ -218,7 +221,7 @@ async function saveEdit() {
 }
 
 const stageWidth = computed(() =>
-  props.compact ? '100%' : `min(100%, calc((100vh - 210px) * ${view.value[2] / view.value[3]}))`,
+  props.compact ? '100%' : `min(100%, calc((100vh - ${props.wall ? 64 : 210}px) * ${view.value[2] / view.value[3]}))`,
 )
 </script>
 
@@ -297,7 +300,7 @@ const stageWidth = computed(() =>
         </div>
       </div>
 
-      <div v-if="!compact" class="tools">
+      <div v-if="!compact && !wall" class="tools">
         <template v-if="editing">
           <span class="hint">拖动图标调整位置</span>
           <button class="tool" title="取消" @click="cancelEdit"><X :size="16" /></button>

@@ -1,8 +1,10 @@
 import { ref } from 'vue'
 
-export type Route = { name: 'home' } | { name: 'room' | 'wall'; room: string }
+/** wall-home: the floor plan full screen for a tablet on the wall; wall: one room the same way. */
+export type Route = { name: 'home' | 'wall-home' } | { name: 'room' | 'wall'; room: string }
 
 function parse(): Route {
+  if (location.hash === '#/wall') return { name: 'wall-home' }
   const m = location.hash.match(/^#\/(room|wall)\/(.+)$/)
   return m ? { name: m[1] as 'room' | 'wall', room: decodeURIComponent(m[2]) } : { name: 'home' }
 }
@@ -36,6 +38,15 @@ export function goHome() {
     history.replaceState(null, '', location.pathname)
     route.value = { name: 'home' }
   }
+}
+
+export function openWall() {
+  location.hash = '#/wall'
+}
+
+export function exitWall() {
+  history.replaceState(null, '', location.pathname)
+  route.value = { name: 'home' }
 }
 
 export const wallUrl = (room: string) => `${location.origin}${location.pathname}${roomHash('wall', room)}`
