@@ -24,7 +24,9 @@ CAMERA_HINTS = (".camera.", ".cateye.")
 QUALITIES = ("sd", "hd")
 # Browser -> go2rtc messages that only start playback; offers for other transports are dropped.
 CLIENT_TYPES = {"mse", "mjpeg"}
-LOCAL_FIELDS = ("hidden",)
+LOCAL_FIELDS = ("hidden", "unsupported")
+# go2rtc's answer for models whose P2P vendor it cannot speak; retrying will not change it.
+UNSUPPORTED = "unsupported model"
 
 
 def is_camera(model: str) -> bool:
@@ -62,13 +64,14 @@ class Cameras:
         return next((c for c in self.items if c["id"] == camera_id), None)
 
     def public(self) -> list[dict]:
-        return [{k: c[k] for k in ("id", "name", "room", "model", "hidden")} for c in self.items]
+        return [{**{k: c[k] for k in ("id", "name", "room", "model", "hidden")},
+                 "unsupported": c.get("unsupported", False)} for c in self.items]
 
-    def update(self, camera_id: str, hidden: bool) -> dict:
+    def update(self, camera_id: str, **fields: bool) -> dict:
         camera = self.get(camera_id)
         if not camera:
             raise KeyError(camera_id)
-        camera["hidden"] = hidden
+        camera.update(fields)
         cameras_file.save(self.items)
         return camera
 
@@ -97,7 +100,7 @@ class Cameras:
                 log.info("go2rtc stream %s -> %s", name, camera["ip"])
 
 
-async def relay(client: WebSocket, stream: str) -> None:
+async def relay(client: WebSocket, stream: str, on_unsupported) -> None:
     """Pipe one browser player socket to go2rtc's stream socket until either side closes."""
     try:
         async with websockets.connect(f"{GO2RTC_WS}/api/ws?src={quote(stream)}", max_size=None,
@@ -106,8 +109,10 @@ async def relay(client: WebSocket, stream: str) -> None:
                 async for message in upstream:
                     if isinstance(message, bytes):
                         await client.send_bytes(message)
-                    else:
-                        await client.send_text(message)
+                        continue
+                    if UNSUPPORTED in message:
+                        on_unsupported()
+                    await client.send_text(message)
 
             async def up():
                 while True:

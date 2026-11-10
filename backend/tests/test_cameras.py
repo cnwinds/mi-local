@@ -16,6 +16,12 @@ def test_only_reachable_cameras_are_listed_and_hidden_flag_survives():
                                                                      ("100000004", "未分配", False)]
 
 
+def test_unsupported_mark_survives_sync():
+    existing = [{"id": "100000004", "unsupported": True}]
+    result = from_homes(HOMES, {}, existing, "未分配")
+    assert [c.get("unsupported", False) for c in result] == [False, True]
+
+
 def test_source_urls():
     camera = {"id": "100000003", "ip": "192.168.1.156", "model": "chuangmi.camera.ipc009"}
     hd = "xiaomi://10001:cn@192.168.1.156?did=100000003&model=chuangmi.camera.ipc009"

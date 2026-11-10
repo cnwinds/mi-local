@@ -405,13 +405,14 @@ def list_cameras():
 
 
 class CameraUpdate(BaseModel):
-    hidden: bool
+    hidden: bool | None = None
+    unsupported: bool | None = None
 
 
 @app.patch("/api/cameras/{camera_id}")
 def update_camera(camera_id: str, body: CameraUpdate):
     try:
-        hub.cameras.update(camera_id, body.hidden)
+        hub.cameras.update(camera_id, **body.model_dump(exclude_none=True))
     except KeyError:
         raise HTTPException(404, "没有这个摄像头")
     return hub.cameras.public()
@@ -423,7 +424,7 @@ async def camera_stream(ws: WebSocket, camera_id: str, quality: Literal["sd", "h
         await ws.close(code=4404)
         return
     await ws.accept()
-    await relay(ws, stream_name(camera_id, quality))
+    await relay(ws, stream_name(camera_id, quality), lambda: hub.cameras.update(camera_id, unsupported=True))
     try:
         await ws.close()
     except RuntimeError:

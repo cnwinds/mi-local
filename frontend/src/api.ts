@@ -136,6 +136,8 @@ export interface Camera {
   room: string
   model: string
   hidden: boolean
+  /** go2rtc cannot speak this model's P2P protocol; it stays off the wall until re-checked. */
+  unsupported: boolean
 }
 
 export interface LockinCapture {
@@ -275,7 +277,8 @@ export const api = {
   captureLockin: (active: boolean) => request<LockinCapture>('POST', '/lockin/capture', { active }),
   setupLockin: (access_token: string) => request<Device[]>('POST', '/lockin/setup', { access_token }),
   cameras: () => request<Camera[]>('GET', '/cameras'),
-  setCameraHidden: (id: string, hidden: boolean) => request<Camera[]>('PATCH', `/cameras/${id}`, { hidden }),
+  updateCamera: (id: string, patch: { hidden?: boolean; unsupported?: boolean }) =>
+    request<Camera[]>('PATCH', `/cameras/${id}`, patch),
   voice: () => request<VoiceStatus>('GET', '/voice'),
   setVoice: (enabled: boolean) => request<VoiceStatus>('PUT', '/voice', { enabled }),
 }

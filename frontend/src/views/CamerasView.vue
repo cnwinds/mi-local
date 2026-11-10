@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { Cctv, EyeOff, Maximize, Minimize, X } from 'lucide-vue-next'
+import { Cctv, Maximize, Minimize, VideoOff, X } from 'lucide-vue-next'
 import PageHeader from '../components/PageHeader.vue'
 import CameraFeed from '../components/CameraFeed.vue'
 import { api, type Camera } from '../api'
@@ -10,8 +10,8 @@ import { rooms } from '../store'
 const cameras = ref<Camera[]>([])
 const loaded = ref(false)
 const states = ref<Record<string, PlayerState>>({})
-const unsupported = ref<Record<string, boolean>>({})
 const showHidden = ref(false)
+const rechecking = ref<string | null>(null)
 const viewing = ref<Camera | null>(null)
 const viewQuality = ref<'sd' | 'hd'>('hd')
 const viewDowngraded = ref(false)
@@ -22,9 +22,9 @@ const roomIndex = (room: string) => {
   const i = rooms.value.indexOf(room)
   return i < 0 ? rooms.value.length : i
 }
-const visible = computed(() =>
-  cameras.value.filter((c) => !c.hidden).sort((a, b) => roomIndex(a.room) - roomIndex(b.room)),
-)
+const byRoom = (a: Camera, b: Camera) => roomIndex(a.room) - roomIndex(b.room)
+const visible = computed(() => cameras.value.filter((c) => !c.hidden && !c.unsupported).sort(byRoom))
+const unsupportedList = computed(() => cameras.value.filter((c) => !c.hidden && c.unsupported).sort(byRoom))
 const hidden = computed(() => cameras.value.filter((c) => c.hidden))
 const liveCount = computed(() => visible.value.filter((c) => states.value[c.id] === 'live').length)
 const subtitle = computed(() =>
@@ -38,14 +38,24 @@ const wallGrid = computed(() => {
 })
 const showRoom = (c: Camera) => c.room && !c.name.includes(c.room)
 
-function onState(id: string, state: PlayerState, error: { fatal: boolean } | null) {
+// The hub marks a camera unsupported when go2rtc refuses its model; reload so it leaves the wall.
+async function onState(id: string, state: PlayerState, error: { fatal: boolean } | null) {
   states.value[id] = state
-  if (error?.fatal) unsupported.value[id] = true
+  if (error?.fatal) cameras.value = await api.cameras()
 }
 
 async function setHidden(camera: Camera, value: boolean) {
-  cameras.value = await api.setCameraHidden(camera.id, value)
+  cameras.value = await api.updateCamera(camera.id, { hidden: value })
   if (value && viewing.value?.id === camera.id) viewing.value = null
+}
+
+async function recheck(camera: Camera) {
+  rechecking.value = camera.id
+  try {
+    cameras.value = await api.updateCamera(camera.id, { unsupported: false })
+  } finally {
+    rechecking.value = null
+  }
 }
 
 function open(camera: Camera) {
@@ -56,7 +66,10 @@ function open(camera: Camera) {
 
 // Some cameras only answer in SD; drop to it once rather than retrying HD forever.
 function onViewState(state: PlayerState, error: { fatal: boolean } | null) {
-  if (state === 'error' && error && !error.fatal && viewQuality.value === 'hd' && !viewDowngraded.value) {
+  if (error?.fatal) {
+    viewing.value = null
+    api.cameras().then((list) => (cameras.value = list))
+  } else if (state === 'error' && error && viewQuality.value === 'hd' && !viewDowngraded.value) {
     viewQuality.value = 'sd'
     viewDowngraded.value = true
   }
@@ -115,11 +128,22 @@ onBeforeUnmount(() => {
           <span class="name">{{ c.name }}</span>
           <span v-if="showRoom(c)" class="room">{{ c.room }}</span>
         </div>
-        <span v-if="unsupported[c.id] && !wall" class="hide-chip" role="button" @click.stop="setHidden(c, true)">
-          <EyeOff :size="13" />隐藏
-        </span>
       </button>
     </div>
+
+    <section v-if="unsupportedList.length && !wall" class="unsupported">
+      <div class="section-label">暂不支持</div>
+      <div class="card unsupported-list">
+        <div v-for="c in unsupportedList" :key="c.id" class="unsupported-row">
+          <span class="off-icon"><VideoOff :size="18" /></span>
+          <div class="unsupported-text">
+            <div>{{ c.name }}</div>
+            <small>这个型号还不能在本地查看，米家 App 里照常能看</small>
+          </div>
+          <button :disabled="rechecking === c.id" @click="recheck(c)">{{ rechecking === c.id ? '检测中' : '重新检测' }}</button>
+        </div>
+      </div>
+    </section>
 
     <button v-if="wall" class="round-button wall-exit" title="退出全屏" @click="exitWall"><Minimize :size="19" /></button>
 
@@ -205,19 +229,56 @@ onBeforeUnmount(() => {
   background: #ff4d4f;
   box-shadow: 0 0 0 3px rgba(255, 77, 79, 0.25);
 }
-.hide-chip {
-  position: absolute;
-  top: 8px;
-  right: 8px;
+.unsupported {
+  padding: 20px 16px 0;
+}
+.section-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-3);
+  padding: 0 4px 8px;
+}
+.unsupported-list {
+  overflow: hidden;
+}
+.unsupported-row {
   display: flex;
   align-items: center;
-  gap: 3px;
-  padding: 4px 9px;
-  border-radius: 999px;
+  gap: 12px;
+  padding: 12px 14px;
+}
+.unsupported-row + .unsupported-row {
+  border-top: 1px solid var(--line);
+}
+.off-icon {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-3);
+  background: var(--surface-2);
+}
+.unsupported-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+}
+.unsupported-text small {
+  display: block;
+  margin-top: 2px;
   font-size: 12px;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.16);
-  backdrop-filter: blur(8px);
+  color: var(--text-3);
+}
+.unsupported-row button {
+  flex: none;
+  font-size: 13px;
+  color: var(--accent);
+}
+.unsupported-row button:disabled {
+  color: var(--text-3);
 }
 .round-button {
   width: 40px;
@@ -347,6 +408,9 @@ onBeforeUnmount(() => {
   }
   .hidden-section {
     padding: 16px 0;
+  }
+  .unsupported {
+    padding: 24px 0 0;
   }
 }
 </style>
