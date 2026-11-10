@@ -43,7 +43,7 @@ async function pair() {
 
       <label class="field">
         <span>配对码</span>
-        <input v-model="code" class="code num" inputmode="text" autocomplete="one-time-code" placeholder="6 位数字"
+        <input v-model="code" class="code num" inputmode="text" autocomplete="one-time-code" placeholder="输入配对码"
           autofocus />
       </label>
       <label class="field">
@@ -56,8 +56,8 @@ async function pair() {
       <div class="help">
         <KeyRound :size="14" />
         <div>
-          配对码在已配对的管理员设备上获取：「设备」页 →「已授权设备」→「配对新设备」。<br />
-          第一台设备的配对码在盒子的运行日志里。
+          6 位配对码在已配对的管理员设备上获取：「设备」页 →「已授权设备」→「配对新设备」。<br />
+          第一台设备用盒子运行日志里的 8 位一次性码。
         </div>
       </div>
     </form>
