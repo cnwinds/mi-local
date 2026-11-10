@@ -191,10 +191,58 @@ function dragStart(m: Marker, e: PointerEvent) {
   dragging = { key: m.key, id: e.pointerId }
   ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
 }
-function dragMove(e: PointerEvent) {
-  if (dragging?.id === e.pointerId) draft[dragging.key] = toPlan(e)
+// Holding Shift snaps the key onto another key's row or column, or its room's center lines, and draws the guide.
+const SNAP_PX = 8
+type Guide = { x1: number; y1: number; x2: number; y2: number }
+const guides = ref<Guide[]>([])
+
+function snap(key: string, [x, y]: PlanPoint): PlanPoint {
+  const tolerance = (SNAP_PX * view.value[2]) / stagePx.value
+  const self = markers.value.find((m) => m.key === key)
+  const others = markers.value.filter((m) => m.key !== key).map((m) => m.pos)
+  const room = plan.value.rooms.find((r) => r.name === self?.room)
+  const box = room && bbox(room.points)
+  const center = box ? [box.x + box.w / 2, box.y + box.h / 2] : null
+  const nearest = (v: number, candidates: number[]) =>
+    candidates.reduce<number | null>(
+      (best, c) => (Math.abs(c - v) <= tolerance && (best === null || Math.abs(c - v) < Math.abs(best - v)) ? c : best),
+      null,
+    )
+  const sx = nearest(x, [...others.map((p) => p[0]), ...(center ? [center[0]] : [])])
+  const sy = nearest(y, [...others.map((p) => p[1]), ...(center ? [center[1]] : [])])
+  const nx = sx ?? x
+  const ny = sy ?? y
+
+  // Each guide runs from the dragged key to the farthest key it lines up with, or across the room for a center line.
+  const PAD = 14
+  const out: Guide[] = []
+  if (sx !== null) {
+    const ys = [ny, ...others.filter((p) => p[0] === sx).map((p) => p[1])]
+    if (box && center![0] === sx) ys.push(box.y, box.y + box.h)
+    out.push({ x1: sx, x2: sx, y1: Math.min(...ys) - PAD, y2: Math.max(...ys) + PAD })
+  }
+  if (sy !== null) {
+    const xs = [nx, ...others.filter((p) => p[1] === sy).map((p) => p[0])]
+    if (box && center![1] === sy) xs.push(box.x, box.x + box.w)
+    out.push({ y1: sy, y2: sy, x1: Math.min(...xs) - PAD, x2: Math.max(...xs) + PAD })
+  }
+  guides.value = out
+  return [Math.round(nx), Math.round(ny)]
 }
-const dragEnd = () => (dragging = null)
+
+function dragMove(e: PointerEvent) {
+  if (dragging?.id !== e.pointerId) return
+  const p = toPlan(e)
+  if (e.shiftKey) draft[dragging.key] = snap(dragging.key, p)
+  else {
+    guides.value = []
+    draft[dragging.key] = p
+  }
+}
+function dragEnd() {
+  dragging = null
+  guides.value = []
+}
 
 function startEdit() {
   watching.value = null
@@ -250,6 +298,9 @@ const stageWidth = computed(() =>
           <circle v-for="g in glows[i]" :key="g.key" :cx="g.pos[0]" :cy="g.pos[1]" :r="55 + 55 * g.level"
             fill="url(#fp-glow)" :opacity="0.45 + 0.55 * g.level" />
         </g>
+        <g v-if="guides.length" class="guides">
+          <line v-for="(g, i) in guides" :key="i" :x1="g.x1" :y1="g.y1" :x2="g.x2" :y2="g.y2" />
+        </g>
       </svg>
 
       <div class="layer">
@@ -280,7 +331,7 @@ const stageWidth = computed(() =>
             <CurtainGlyph v-else-if="m.device.kind === 'curtain'" :position="m.device.state.position ?? 0" :size="18" />
             <DeviceIcon v-else :kind="m.device.kind" :model="m.device.model" :name="m.device.name" :size="34" class="mk-icon" />
             <span class="mk-tip">
-              <b>{{ shortName(m.device) }}</b>{{ deviceStatus(m.device) }}
+              <b>{{ shortName(m.device) }}</b><span>{{ deviceStatus(m.device) }}</span>
             </span>
           </button>
           <button v-else class="mk camera accent"
@@ -288,7 +339,7 @@ const stageWidth = computed(() =>
             :aria-label="m.camera.name" @click.stop="tapCamera(m.camera)"
             @pointerdown="dragStart(m, $event)" @pointermove="dragMove" @pointerup="dragEnd" @pointercancel="dragEnd">
             <Cctv :size="17" :stroke-width="2" />
-            <span class="mk-tip"><b>{{ m.camera.name }}</b>{{ m.camera.unsupported ? '暂不支持' : '点击查看画面' }}</span>
+            <span class="mk-tip"><b>{{ m.camera.name }}</b><span>{{ m.camera.unsupported ? '暂不支持' : '点击查看画面' }}</span></span>
           </button>
         </template>
 
@@ -302,7 +353,7 @@ const stageWidth = computed(() =>
 
       <div v-if="!compact && !wall" class="tools">
         <template v-if="editing">
-          <span class="hint">拖动图标调整位置</span>
+          <span class="hint">拖动图标调整位置，按住 Shift 对齐</span>
           <button class="tool" title="取消" @click="cancelEdit"><X :size="16" /></button>
           <button class="tool primary" title="保存" @click="saveEdit"><Check :size="16" /></button>
         </template>
@@ -374,6 +425,14 @@ const stageWidth = computed(() =>
 }
 .tint.heat {
   fill: rgb(242 107 42 / 0.13);
+}
+.guides {
+  pointer-events: none;
+}
+.guides line {
+  stroke: var(--accent);
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
 }
 .ambient circle {
   transition: r 0.5s, opacity 0.5s;
