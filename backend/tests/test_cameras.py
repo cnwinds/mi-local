@@ -1,3 +1,4 @@
+import pytest
 from homehub import cameras
 from homehub.cameras import from_homes, source, stream_name
 
@@ -51,3 +52,27 @@ def test_register_only_touches_changed_streams(monkeypatch):
                         lambda method, url, params, timeout: calls.append((method, params["name"])) or Response())
     cam._register("9")
     assert calls == [("PATCH", "cam_1_sd"), ("PUT", "cam_1_hd3")]
+
+
+class FakeResponse:
+    def __init__(self, status, body):
+        self.status_code, self._body = status, body
+        self.ok = status < 400
+        self.text = body if isinstance(body, str) else ""
+        self.reason = "x"
+
+    def json(self):
+        return self._body
+
+
+def test_go2rtc_login_steps(monkeypatch):
+    sent = []
+    replies = iter([FakeResponse(401, {"captcha": "aW1n"}), FakeResponse(401, {"verify_phone": "138****0000"}),
+                    FakeResponse(200, ""), FakeResponse(500, 'xiaomi: {"code":70016}')])
+    monkeypatch.setattr(cameras.requests, "post", lambda url, data, timeout: sent.append(data) or next(replies))
+    assert cameras.go2rtc_login({"username": "u", "password": "p"}) == {"captcha": "aW1n"}
+    assert cameras.go2rtc_login({"captcha": "abcd"}) == {"verify": "138****0000"}
+    assert cameras.go2rtc_login({"verify": "123456"}) == {"ok": True}
+    with pytest.raises(ValueError, match="账号或密码不对"):
+        cameras.go2rtc_login({"username": "u", "password": "bad"})
+    assert sent[1] == {"captcha": "abcd"}

@@ -4,6 +4,7 @@ import { Cctv, Maximize, Minimize, VideoOff, X } from 'lucide-vue-next'
 import PageHeader from '../components/PageHeader.vue'
 import CameraEvents from '../components/CameraEvents.vue'
 import CameraFeed from '../components/CameraFeed.vue'
+import CameraLogin from '../components/CameraLogin.vue'
 import { api, type Camera } from '../api'
 import type { PlayerState } from '../cameraPlayer'
 import { can, rooms } from '../store'
@@ -42,6 +43,10 @@ const showRoom = (c: Camera) => c.room && !c.name.includes(c.room)
 async function onState(id: string, state: PlayerState, error: { fatal: boolean } | null) {
   states.value[id] = state
   if (error?.fatal) cameras.value = await api.cameras()
+}
+
+async function reload() {
+  cameras.value = await api.cameras()
 }
 
 async function setHidden(camera: Camera, value: boolean) {
@@ -158,6 +163,8 @@ onBeforeUnmount(() => {
         <Maximize :size="19" />
       </button>
     </PageHeader>
+
+    <CameraLogin v-if="can('admin') && !wall" @done="reload" />
 
     <div v-if="loaded && !cameras.length" class="empty">
       <Cctv :size="34" :stroke-width="1.6" />

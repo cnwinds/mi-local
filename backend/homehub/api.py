@@ -16,7 +16,7 @@ from starlette.datastructures import Headers
 from starlette.requests import cookie_parser
 
 from .auth import COOKIE, COOKIE_MAX_AGE, PERMISSIONS, Auth, PairError, TooManyAttempts, required_permission
-from .cameras import relay, stream_name
+from .cameras import go2rtc_accounts, go2rtc_login, relay, stream_name
 from .hub import Hub
 from .lockin_capture import ca_pem
 from .micloud import CloudError
@@ -622,6 +622,54 @@ async def stats(days: int | None = None, tz: int = 0):
 @app.get("/api/cameras")
 def list_cameras():
     return hub.cameras.public()
+
+
+class Go2rtcLogin(BaseModel):
+    username: str | None = Field(None, max_length=100)
+    password: str | None = Field(None, max_length=200)
+    captcha: str | None = Field(None, max_length=20)
+    verify: str | None = Field(None, max_length=20)
+
+
+@app.get("/api/go2rtc")
+async def go2rtc_status():
+    """Whether go2rtc runs, and is logged in with the account the camera streams are registered under."""
+    accounts = await asyncio.to_thread(go2rtc_accounts)
+    user = str(hub.cloud.data.get("user_id") or "")
+    return {
+        "running": accounts is not None,
+        "logged_in": bool(accounts) and (not user or user in accounts),
+        "other_account": bool(accounts) and bool(user) and user not in accounts,
+    }
+
+
+async def _sync_quietly() -> None:
+    try:
+        await hub.sync_cloud()
+    except Exception as e:
+        log.info("sync after the camera login failed: %s", e)
+
+
+@app.post("/api/go2rtc/login")
+async def go2rtc_login_step(body: Go2rtcLogin):
+    fields = {k: v.strip() for k, v in body.model_dump().items() if v and v.strip()}
+    if not fields:
+        raise HTTPException(400, "请填写账号和密码")
+    try:
+        result = await asyncio.to_thread(go2rtc_login, fields)
+    except requests.RequestException:
+        raise HTTPException(502, "监控服务（go2rtc）没有运行")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    # Register the camera streams under the fresh login right away.
+    if result.get("ok") and hub.cloud.logged_in:
+        task = asyncio.create_task(_sync_quietly())
+        _background.add(task)
+        task.add_done_callback(_background.discard)
+    return result
+
+
+_background: set[asyncio.Task] = set()
 
 
 class CameraUpdate(BaseModel):

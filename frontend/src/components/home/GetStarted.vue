@@ -27,7 +27,7 @@ const steps = computed(() => [
       </ol>
       <CloudCard class="cloud" />
       <div class="later">
-        之后还可以：在电脑上创建户型图；在「设备」页的「已授权设备」给家人的手机和墙上的平板配对；部署 go2rtc 后在「监控」页看摄像头。
+        之后还可以：在电脑上创建户型图；在「设备」页的「已授权设备」给家人的手机和墙上的平板配对；部署 go2rtc 后，在「监控」页登录一次小米账号就能看摄像头。
       </div>
     </template>
     <div v-else class="waiting">还没有设备。请管理员在「设备」页登录米家并同步。</div>

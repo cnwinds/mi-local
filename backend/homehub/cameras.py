@@ -59,6 +59,36 @@ def source(camera: dict, user_id: str, quality: str) -> str:
     return f"{url}&subtype={SUBTYPES[quality]}" if quality in SUBTYPES else url
 
 
+def go2rtc_accounts() -> list[str] | None:
+    """Xiaomi user IDs go2rtc is logged in with; None when go2rtc isn't running."""
+    try:
+        resp = requests.get(f"{GO2RTC}/api/xiaomi", timeout=5)
+        resp.raise_for_status()
+        return [str(u) for u in resp.json() or []]
+    except (requests.RequestException, ValueError):
+        return None
+
+
+def go2rtc_login(fields: dict[str, str]) -> dict:
+    """One step of go2rtc's own Xiaomi login: {"username", "password"}, then {"captcha"} or {"verify"} if asked.
+
+    The only go2rtc endpoint the hub passes anything to; the password is forwarded once and never kept.
+    Returns {"ok": True}, {"captcha": base64 image} or {"verify": masked phone or email}.
+    """
+    resp = requests.post(f"{GO2RTC}/api/xiaomi", data=fields, timeout=30)
+    if resp.status_code == 401:
+        step = resp.json()
+        if step.get("captcha"):
+            return {"captcha": step["captcha"]}
+        return {"verify": step.get("verify_phone") or step.get("verify_email") or "你的手机或邮箱"}
+    if not resp.ok:
+        text = resp.text.strip()
+        if "70016" in text:
+            raise ValueError("账号或密码不对")
+        raise ValueError(f"小米账号登录失败：{text[:160] or resp.reason}")
+    return {"ok": True}
+
+
 def masked(url: str) -> str:
     """go2rtc hides the account part of source URLs in its API; compare ours the same way."""
     return re.sub(r"^(\w+://)[^@/]*@", r"\1***@", url)

@@ -355,6 +355,10 @@ export const api = {
   captureLockin: (active: boolean) => request<LockinCapture>('POST', '/lockin/capture', { active }),
   setupLockin: (access_token: string) => request<Device[]>('POST', '/lockin/setup', { access_token }),
   cameras: () => request<Camera[]>('GET', '/cameras'),
+  go2rtc: () => request<{ running: boolean; logged_in: boolean; other_account: boolean }>('GET', '/go2rtc'),
+  /** One step of the camera service's Xiaomi login: account first, then a captcha or verification code if asked. */
+  go2rtcLogin: (fields: { username?: string; password?: string; captcha?: string; verify?: string }) =>
+    request<{ ok?: boolean; captcha?: string; verify?: string }>('POST', '/go2rtc/login', fields),
   updateCamera: (id: string, patch: { hidden?: boolean; unsupported?: boolean }) =>
     request<Camera[]>('PATCH', `/cameras/${id}`, patch),
   cameraEvents: (id: string, before?: number) =>
