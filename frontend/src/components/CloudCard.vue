@@ -1,12 +1,20 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { showConfirmDialog, showFailToast, showSuccessToast } from 'vant'
-import { api, type SyncSummary } from '../api'
+import { api, type CloudRegion, type SyncSummary } from '../api'
 import { cloud, loadCloud } from '../store'
 import { CircleCheck, Cloud as CloudIcon, LogOut, RefreshCw } from 'lucide-vue-next'
 
 const syncing = ref(false)
 const showQr = ref(false)
+
+// The account is global; the region is which Mi Home servers hold its devices (the Mi Home app's region setting).
+const REGIONS: { id: CloudRegion; name: string }[] = [
+  { id: 'cn', name: '中国大陆' }, { id: 'sg', name: '新加坡' }, { id: 'de', name: '欧洲' },
+  { id: 'us', name: '美国' }, { id: 'ru', name: '俄罗斯' }, { id: 'i2', name: '印度' },
+]
+const region = ref<CloudRegion>('cn')
+const regionName = computed(() => REGIONS.find((r) => r.id === cloud.value?.region)?.name)
 
 const login = computed(() => cloud.value?.login)
 const timeFmt = new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -27,7 +35,7 @@ function describe(s: SyncSummary | null | undefined) {
 
 async function startLogin() {
   try {
-    await api.cloudLogin()
+    await api.cloudLogin(region.value)
     await loadCloud()
     showQr.value = true
   } catch (e) {
@@ -65,9 +73,13 @@ async function logout() {
       <div v-if="!cloud.logged_in" class="sub">登录后自动同步设备名称、房间和密钥</div>
       <div v-else-if="cloud.last_error" class="sub error">同步失败：{{ cloud.last_error }}（断网时正常，本地功能不受影响）</div>
       <div v-else class="sub">
+        <template v-if="cloud.region !== 'cn'">{{ regionName }} · </template>
         {{ cloud.last_sync ? timeFmt.format(new Date(cloud.last_sync * 1000)) : '尚未同步' }}<template v-if="summaryText"> · {{ summaryText }}</template>
       </div>
     </div>
+    <select v-if="!cloud.logged_in" v-model="region" class="region" title="米家 App 里设置的服务器地区">
+      <option v-for="r in REGIONS" :key="r.id" :value="r.id">{{ r.name }}</option>
+    </select>
     <template v-if="cloud.logged_in">
       <button class="icon-btn primary" :class="{ spin: syncing }" :disabled="syncing" title="立即同步" @click="sync">
         <RefreshCw :size="17" :stroke-width="2.2" />
@@ -141,6 +153,17 @@ async function logout() {
 }
 .sub.error {
   color: var(--heat);
+}
+.region {
+  flex: none;
+  height: 30px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12px;
 }
 .icon-btn {
   flex: none;

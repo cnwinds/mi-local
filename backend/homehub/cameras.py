@@ -54,8 +54,9 @@ def stream_name(camera_id: str, quality: str) -> str:
     return f"cam_{camera_id}_{quality}"
 
 
-def source(camera: dict, user_id: str, quality: str) -> str:
-    url = f"xiaomi://{user_id}:cn@{camera['ip']}?did={camera['id']}&model={camera['model']}"
+def source(camera: dict, user_id: str, quality: str, region: str = "cn") -> str:
+    """go2rtc source; the password part of the URL is the account's Mi Home region."""
+    url = f"xiaomi://{user_id}:{region}@{camera['ip']}?did={camera['id']}&model={camera['model']}"
     return f"{url}&subtype={SUBTYPES[quality]}" if quality in SUBTYPES else url
 
 
@@ -113,22 +114,23 @@ class Cameras:
         cameras_file.save(self.items)
         return camera
 
-    async def sync(self, homes: list[dict], room_of: dict[str, str], user_id: str, unassigned: str) -> None:
+    async def sync(self, homes: list[dict], room_of: dict[str, str], user_id: str, unassigned: str,
+                   region: str = "cn") -> None:
         cameras = from_homes(homes, room_of, self.items, unassigned)
         if cameras != self.items:
             self.items = cameras
             cameras_file.save(cameras)
         try:
-            await asyncio.to_thread(self._register, user_id)
+            await asyncio.to_thread(self._register, user_id, region)
         except requests.RequestException as e:
             log.info("go2rtc not reachable, camera streams not registered: %s", e)
 
-    def _register(self, user_id: str) -> None:
+    def _register(self, user_id: str, region: str = "cn") -> None:
         """Point go2rtc's streams at the cameras' current addresses (they move when DHCP does)."""
         current = requests.get(f"{GO2RTC}/api/streams", timeout=5).json() or {}
         for camera in self.items:
             for quality in QUALITIES:
-                name, src = stream_name(camera["id"], quality), source(camera, user_id, quality)
+                name, src = stream_name(camera["id"], quality), source(camera, user_id, quality, region)
                 urls = [masked(p.get("url", "")) for p in (current.get(name) or {}).get("producers") or []]
                 if urls == [masked(src)]:
                     continue

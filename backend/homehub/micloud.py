@@ -13,8 +13,13 @@ from urllib.parse import urlparse
 import requests
 from Crypto.Cipher import ARC4
 
-API = "https://api.io.mi.com/app"
 SERVICE_LOGIN = "https://account.xiaomi.com/pass/serviceLogin?sid=xiaomiio&_json=true"
+# Mi Home server regions: the account is global, devices live on one region's servers.
+REGIONS = ("cn", "sg", "de", "us", "ru", "i2")
+
+
+def api_base(region: str) -> str:
+    return "https://api.io.mi.com/app" if region == "cn" else f"https://{region}.api.io.mi.com/app"
 
 
 class CloudError(Exception):
@@ -48,17 +53,26 @@ class MiCloud:
         self._http = requests.Session()
         self._lp_url: str | None = None
         self._lp_deadline = 0.0
+        self._pending_region = "cn"
 
     @property
     def logged_in(self) -> bool:
         return bool(self.data.get("service_token"))
 
     @property
+    def region(self) -> str:
+        return self.data.get("region") or "cn"
+
+    @property
     def login_pending(self) -> bool:
         return self._lp_url is not None and time.time() < self._lp_deadline - 30
 
     # --- QR login -------------------------------------------------------
-    def start_qr_login(self) -> dict:
+    def start_qr_login(self, region: str = "cn") -> dict:
+        if region not in REGIONS:
+            raise CloudError(f"unknown region {region}")
+        # Applied once the scan succeeds, so a session that is still logged in keeps its servers meanwhile.
+        self._pending_region = region
         resp = self._http.get("https://account.xiaomi.com/longPolling/loginUrl", params={
             "_qrsize": "480", "qs": "%3Fsid%3Dxiaomiio%26_json%3Dtrue", "callback": "https://sts.api.io.mi.com/sts",
             "_hasLogo": "false", "sid": "xiaomiio", "serviceParam": "", "_locale": "zh_CN",
@@ -81,7 +95,7 @@ class MiCloud:
             if resp.status_code == 200:
                 self._lp_url = None
                 data = _json(resp.text)
-                self.data.update(user_id=str(data["userId"]), pass_token=data["passToken"])
+                self.data.update(user_id=str(data["userId"]), pass_token=data["passToken"], region=self._pending_region)
                 self._finish_login(data["ssecurity"], data["location"])
                 return True
         return False
@@ -129,7 +143,7 @@ class MiCloud:
         if not self.logged_in:
             raise CloudError("not logged in")
         params, signed = self._rc4_params(path, payload, "POST")
-        resp = self._http.post(API + path, params=params, timeout=15, headers={
+        resp = self._http.post(api_base(self.region) + path, params=params, timeout=15, headers={
             "Accept-Encoding": "identity", "User-Agent": self._agent,
             "Content-Type": "application/x-www-form-urlencoded",
             "x-xiaomi-protocal-flag-cli": "PROTOCAL-HTTP2", "MIOT-ENCRYPT-ALGORITHM": "ENCRYPT-RC4",

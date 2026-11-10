@@ -471,11 +471,12 @@ class Hub:
                     log.warning("cloud sync failed: %s", e)
             await asyncio.sleep(CLOUD_SYNC_INTERVAL)
 
-    async def start_cloud_login(self) -> dict:
+    async def start_cloud_login(self, region: str = "cn") -> dict:
         login = self.cloud_status["login"]
-        if login and login["state"] == "waiting" and self.cloud.login_pending:
+        if login and login["state"] == "waiting" and self.cloud.login_pending and login.get("region") == region:
             return login
-        info = await asyncio.to_thread(self.cloud.start_qr_login)
+        info = await asyncio.to_thread(self.cloud.start_qr_login, region)
+        info["region"] = region
         self.cloud_status["login"] = {"state": "waiting", **info}
         self._tasks.append(asyncio.create_task(self._wait_cloud_login()))
         return self.cloud_status["login"]
@@ -533,7 +534,8 @@ class Hub:
             self.broadcast({"type": "gateway"})
             self.settings["rooms"] = room_order
             self.save_settings()
-            await self.cameras.sync(homes, room_of, str(self.cloud.data.get("user_id", "")), UNASSIGNED)
+            await self.cameras.sync(homes, room_of, str(self.cloud.data.get("user_id", "")), UNASSIGNED,
+                                    self.cloud.region)
             self.cloud_status.update(last_sync=time.time(), last_error=None, summary=summary)
             self.broadcast({"type": "devices"})
             self.broadcast({"type": "cloud"})

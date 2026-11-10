@@ -452,13 +452,18 @@ async def run_scene(scene_id: str):
 
 @app.get("/api/cloud")
 def cloud_status():
-    return {"logged_in": hub.cloud.logged_in, "user_id": hub.cloud.data.get("user_id"), **hub.cloud_status}
+    return {"logged_in": hub.cloud.logged_in, "user_id": hub.cloud.data.get("user_id"), "region": hub.cloud.region,
+            **hub.cloud_status}
+
+
+class CloudLoginRequest(BaseModel):
+    region: Literal["cn", "sg", "de", "us", "ru", "i2"] = "cn"
 
 
 @app.post("/api/cloud/login")
-async def cloud_login():
+async def cloud_login(body: CloudLoginRequest | None = None):
     try:
-        return await hub.start_cloud_login()
+        return await hub.start_cloud_login((body or CloudLoginRequest()).region)
     except Exception as e:
         raise HTTPException(502, f"无法连接小米账号服务：{e}")
 

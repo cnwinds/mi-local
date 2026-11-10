@@ -76,3 +76,11 @@ def test_go2rtc_login_steps(monkeypatch):
     with pytest.raises(ValueError, match="账号或密码不对"):
         cameras.go2rtc_login({"username": "u", "password": "bad"})
     assert sent[1] == {"captcha": "abcd"}
+
+
+def test_region_picks_the_api_server():
+    from homehub.micloud import MiCloud, api_base
+    assert api_base("cn") == "https://api.io.mi.com/app"
+    assert api_base("sg") == "https://sg.api.io.mi.com/app"
+    assert MiCloud({}).region == "cn" and MiCloud({"region": "de"}).region == "de"
+    assert source({"id": "1", "ip": "10.0.0.2", "model": "x.camera.y"}, "42", "hd", "sg").startswith("xiaomi://42:sg@")

@@ -206,9 +206,12 @@ export interface CloudLogin {
   error?: string
 }
 
+export type CloudRegion = 'cn' | 'sg' | 'de' | 'us' | 'ru' | 'i2'
+
 export interface CloudStatus {
   logged_in: boolean
   user_id: string | null
+  region: CloudRegion
   last_sync: number | null
   last_error: string | null
   summary: SyncSummary | null
@@ -327,7 +330,7 @@ export const api = {
   stats: (days: number | null) =>
     request<Stats>('GET', `/stats?tz=${new Date().getTimezoneOffset()}${days ? `&days=${days}` : ''}`),
   cloud: () => request<CloudStatus>('GET', '/cloud'),
-  cloudLogin: () => request<CloudLogin>('POST', '/cloud/login'),
+  cloudLogin: (region: CloudRegion = 'cn') => request<CloudLogin>('POST', '/cloud/login', { region }),
   cloudSync: () => request<SyncSummary>('POST', '/cloud/sync'),
   cloudLogout: () => request<unknown>('POST', '/cloud/logout'),
   pairing: () => request<PairingStatus>('GET', '/gateway/pairing'),
