@@ -12,3 +12,15 @@ services:
       TZ: "CST-8"
     volumes:
       - ./data:/data
+
+  # Camera streams (optional). Copy deploy/go2rtc.yaml to ./go2rtc/go2rtc.yaml *before* the first start:
+  # without it go2rtc listens on every interface with an unprotected admin page.
+  go2rtc:
+    image: alexxit/go2rtc:latest
+    container_name: go2rtc
+    network_mode: host
+    restart: always
+    environment:
+      TZ: "CST-8"
+    volumes:
+      - ./go2rtc:/config

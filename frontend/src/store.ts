@@ -72,10 +72,14 @@ export const EVENT_NAMES: Record<string, string> = {
   door_close: '关门',
 }
 
+/** False until the first device list arrives, so an empty home isn't mistaken for a fresh install. */
+export const devicesLoaded = ref(false)
+
 export async function loadDevices() {
   const list = await api.devices()
   for (const id of Object.keys(devices)) delete devices[id]
   for (const d of list) devices[d.id] = d
+  devicesLoaded.value = true
   rooms.value = await api.rooms()
 }
 

@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { showToast } from 'vant'
 import { LayoutGrid, Map as MapIcon, TabletSmartphone } from 'lucide-vue-next'
-import { can, floorplan } from '../store'
+import { can, deviceList, devicesLoaded, floorplan } from '../store'
 import { panelRooms } from '../rooms'
 import { headline } from '../home'
 import { openWall } from '../router'
@@ -11,6 +11,7 @@ import RoomTile from '../components/home/RoomTile.vue'
 import FloorPlan from '../components/home/FloorPlan.vue'
 import HomeStats from '../components/home/HomeStats.vue'
 import FloorPlanEditor from '../components/home/FloorPlanEditor.vue'
+import GetStarted from '../components/home/GetStarted.vue'
 
 const now = ref(new Date())
 const timer = setInterval(() => (now.value = new Date()), 60_000)
@@ -68,7 +69,10 @@ function toWall() {
         <div class="rooms">
           <RoomTile v-for="room in panelRooms" :key="room" :room="room" />
         </div>
-        <van-empty v-if="!panelRooms.length" description="还没有设备，去「设备」页同步米家" />
+        <template v-if="devicesLoaded">
+          <GetStarted v-if="!deviceList.length" />
+          <van-empty v-else-if="!panelRooms.length" description="首页没有可显示的设备：它们都被隐藏了，可以在「设备」页打开" />
+        </template>
       </template>
     </div>
     <FloorPlanEditor v-if="creating" @close="creating = false" />
