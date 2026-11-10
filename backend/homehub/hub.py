@@ -29,6 +29,10 @@ CLOUD_SYNC_INTERVAL = 30 * 60
 DOORBELL_ID = "gw2.doorbell"
 GW_DRIVERS = ("gw2", "gw2bell")
 USAGE_KINDS = {"light", "plug", "ac", "bath_heater", "other"}
+# A lost reply is routine on Wi-Fi, through the gateway and on the cloud API: only a run of failed polls
+# means a device is offline, and the first misses are retried soon instead of after a full interval.
+OFFLINE_AFTER_FAILURES = 3
+FAILURE_RETRY = 10.0
 # Gateways that speak the LAN protocol on UDP 9898 once it is enabled in Mi Home.
 SUPPORTED_GATEWAYS = {"lumi.gateway.v2", "lumi.gateway.v3", "lumi.gateway.mieu01"}
 
@@ -54,6 +58,7 @@ class Hub:
         self.cloud = MiCloud(cloud_file.load())
         self.cloud_status: dict = {"last_sync": None, "last_error": None, "summary": None, "login": None}
         self._poll_tasks: dict[str, asyncio.Task] = {}
+        self._poll_failures: dict[str, int] = {}
         self._tasks: list[asyncio.Task] = []
         self._sync_lock = asyncio.Lock()
         self.pairing: dict = {"until": 0.0, "found": []}
@@ -254,17 +259,28 @@ class Hub:
         driver = self.drivers[device_id]
         while True:
             state = await self.refresh(device_id)
-            interval = driver.poll_interval if state.get("online") else driver.offline_retry
+            if not state.get("online"):
+                interval = driver.offline_retry
+            elif self._poll_failures.get(device_id):
+                interval = min(driver.poll_interval, FAILURE_RETRY)
+            else:
+                interval = driver.poll_interval
             await asyncio.sleep(interval)
 
     async def refresh(self, device_id: str) -> dict:
         driver = self.drivers.get(device_id)
         if driver:
             try:
-                self.update_state(device_id, {"online": True, **await driver.poll()})
+                state = await driver.poll()
             except Exception as e:
-                log.debug("poll %s failed: %s", device_id, e)
-                self.update_state(device_id, {"online": False})
+                failures = self._poll_failures.get(device_id, 0) + 1
+                self._poll_failures[device_id] = failures
+                log.debug("poll %s failed (%d in a row): %s", device_id, failures, e)
+                if failures >= OFFLINE_AFTER_FAILURES:
+                    self.update_state(device_id, {"online": False})
+            else:
+                self._poll_failures.pop(device_id, None)
+                self.update_state(device_id, {"online": True, **state})
         return self.states.get(device_id, {})
 
     async def command(self, device_id: str, action: str, value=None) -> dict:
@@ -296,6 +312,7 @@ class Hub:
         device_id = f"lumi.{sid}"
         if device_id not in self.records:
             self._add_gw2_device(sid, model)
+        self._poll_failures.pop(device_id, None)
         self.update_state(device_id, state)
 
     def _gw_event(self, sid: str, model: str, event: str) -> None:
