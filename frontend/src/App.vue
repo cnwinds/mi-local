@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { House, LayoutGrid, ToggleRight, Wifi, WifiOff } from 'lucide-vue-next'
+import { Cctv, House, LayoutGrid, ToggleRight, Wifi, WifiOff } from 'lucide-vue-next'
+import CamerasView from './views/CamerasView.vue'
 import HomeView from './views/HomeView.vue'
 import RoomPanel from './views/RoomPanel.vue'
 import SwitchesView from './views/SwitchesView.vue'
@@ -17,6 +18,7 @@ watch(
 
 const TABS = [
   { name: 'home', label: '家', icon: House },
+  { name: 'cameras', label: '监控', icon: Cctv },
   { name: 'switches', label: '开关', icon: ToggleRight },
   { name: 'devices', label: '设备', icon: LayoutGrid },
 ]
@@ -65,6 +67,7 @@ function pickRoom(room: string) {
         <RoomPanel v-if="route.name === 'room'" :key="route.room" :room="route.room" />
         <HomeView v-else />
       </template>
+      <CamerasView v-if="tab === 'cameras'" />
       <SwitchesView v-if="tab === 'switches'" />
       <DevicesView v-if="tab === 'devices'" />
     </main>
@@ -105,7 +108,7 @@ function pickRoom(room: string) {
   border: 1px solid var(--line);
 }
 .tab {
-  width: 84px;
+  width: 76px;
   height: 52px;
   border-radius: 20px;
   display: flex;

@@ -130,6 +130,14 @@ export interface Stats {
   daily: { day: number; presses: number; turn_ons: number; doors: number }[]
 }
 
+export interface Camera {
+  id: string
+  name: string
+  room: string
+  model: string
+  hidden: boolean
+}
+
 export interface LockinCapture {
   active: boolean
   port: number
@@ -266,6 +274,8 @@ export const api = {
   lockin: () => request<{ configured: boolean; capture: LockinCapture }>('GET', '/lockin'),
   captureLockin: (active: boolean) => request<LockinCapture>('POST', '/lockin/capture', { active }),
   setupLockin: (access_token: string) => request<Device[]>('POST', '/lockin/setup', { access_token }),
+  cameras: () => request<Camera[]>('GET', '/cameras'),
+  setCameraHidden: (id: string, hidden: boolean) => request<Camera[]>('PATCH', `/cameras/${id}`, { hidden }),
   voice: () => request<VoiceStatus>('GET', '/voice'),
   setVoice: (enabled: boolean) => request<VoiceStatus>('PUT', '/voice', { enabled }),
 }

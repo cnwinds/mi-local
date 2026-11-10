@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from .cameras import relay, stream_name
 from .hub import Hub
 from .lockin_capture import ca_pem
 from .store import panels_file, scenes_file
@@ -396,6 +397,37 @@ async def list_events(before: float | None = None, limit: int = 100):
 async def stats(days: int | None = None, tz: int = 0):
     kinds = {i: r.get("kind", "") for i, r in hub.records.items()}
     return await asyncio.to_thread(hub.history.stats, days, tz, kinds)
+
+
+@app.get("/api/cameras")
+def list_cameras():
+    return hub.cameras.public()
+
+
+class CameraUpdate(BaseModel):
+    hidden: bool
+
+
+@app.patch("/api/cameras/{camera_id}")
+def update_camera(camera_id: str, body: CameraUpdate):
+    try:
+        hub.cameras.update(camera_id, body.hidden)
+    except KeyError:
+        raise HTTPException(404, "没有这个摄像头")
+    return hub.cameras.public()
+
+
+@app.websocket("/api/cameras/{camera_id}/ws")
+async def camera_stream(ws: WebSocket, camera_id: str, quality: Literal["sd", "hd"] = "sd"):
+    if not hub.cameras.get(camera_id):
+        await ws.close(code=4404)
+        return
+    await ws.accept()
+    await relay(ws, stream_name(camera_id, quality))
+    try:
+        await ws.close()
+    except RuntimeError:
+        pass
 
 
 @app.websocket("/api/ws")

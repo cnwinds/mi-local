@@ -6,6 +6,7 @@ import re
 import time
 import miio
 
+from .cameras import Cameras
 from .catalog import LOCAL_FIELDS, UNASSIGNED, gateway_record, merge, rooms_from_homes
 from .drivers.gateway2 import KIND_BY_MODEL, Gateway2, Gw2DeviceDriver, Gw2DoorbellDriver
 from .drivers.cloud import CLOUD_DRIVERS, MiotGenericDriver
@@ -67,6 +68,7 @@ class Hub:
         # Gateways in the Mi Home account as of the last sync, so the user can pick one.
         self.cloud_gateways: dict[str, dict] = {}
         self.voice = VoiceBridge(self)
+        self.cameras = Cameras()
         self.lockin = LockinCloud(lockin_file.load())
         self.lockin_capture = LockinCapture(self.setup_lockin)
 
@@ -489,6 +491,7 @@ class Hub:
             self.broadcast({"type": "gateway"})
             self.settings["rooms"] = room_order
             self.save_settings()
+            await self.cameras.sync(homes, room_of, str(self.cloud.data.get("user_id", "")), UNASSIGNED)
             self.cloud_status.update(last_sync=time.time(), last_error=None, summary=summary)
             self.broadcast({"type": "devices"})
             self.broadcast({"type": "cloud"})

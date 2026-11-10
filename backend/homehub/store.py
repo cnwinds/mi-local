@@ -36,3 +36,5 @@ scenes_file = JsonFile("scenes.json", [])
 events_file = JsonFile("events.json", [])
 # {"access_token"} for the Lockin (dding) cloud; account-wide, shared by every lock
 lockin_file = JsonFile("lockin.json", {})
+# [{"id": did, "name", "room", "model", "ip", "hidden"}], refreshed by every Mi Home sync
+cameras_file = JsonFile("cameras.json", [])

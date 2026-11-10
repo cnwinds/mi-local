@@ -19,6 +19,8 @@ uvicorn[standard]
 pycryptodome
 requests
 segno
+# go2rtc stream relay for the cameras
+websockets
 # Midea air conditioners: LAN control, and the one-time Meiju cloud key fetch
 msmart-ng==2026.9.0
 midea-local==15.0.0
