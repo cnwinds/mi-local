@@ -1,5 +1,6 @@
 import asyncio
 import io
+import logging
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -22,6 +23,7 @@ from .micloud import CloudError
 from .ranges import byte_range
 from .store import floorplan_file, panels_file, scenes_file
 
+log = logging.getLogger(__name__)
 hub = Hub()
 auth = Auth()
 STATIC_DIR = Path(__file__).resolve().parents[2] / "frontend" / "dist"
@@ -54,6 +56,11 @@ def _same_origin(headers: Headers) -> bool:
 
 
 async def _deny(scope, receive, send, status: int, detail: str) -> None:
+    headers = Headers(scope=scope)
+    if scope["type"] == "websocket" or status == 403:
+        log.info("refused %s %s: %s (origin=%s host=%s cookie=%s ua=%s)", scope["type"], scope["path"], detail,
+                 headers.get("origin"), headers.get("host"), COOKIE in headers.get("cookie", ""),
+                 headers.get("user-agent", "")[:80])
     if scope["type"] == "websocket":
         await receive()
         await send({"type": "websocket.close", "code": 4401 if status == 401 else 4403})
