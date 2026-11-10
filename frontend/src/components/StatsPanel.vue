@@ -12,19 +12,24 @@ const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日']
 const days = ref<number | null>(7)
 const stats = ref<Stats | null>(null)
 const loading = ref(false)
+const failed = ref(false)
+let request = 0
 
-watch(
-  days,
-  async (d) => {
-    loading.value = true
-    try {
-      stats.value = await api.stats(d)
-    } finally {
-      loading.value = false
-    }
-  },
-  { immediate: true },
-)
+async function load() {
+  const id = ++request
+  loading.value = true
+  failed.value = false
+  try {
+    const result = await api.stats(days.value)
+    if (id === request) stats.value = result
+  } catch {
+    if (id === request) failed.value = true
+  } finally {
+    if (id === request) loading.value = false
+  }
+}
+
+watch(days, load, { immediate: true })
 
 const dateFmt = new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' })
 const name = (id: string) => devices[id]?.name ?? id
@@ -168,6 +173,7 @@ const insights = computed(() => {
       </div>
     </template>
     <van-loading v-else-if="loading" class="loading" />
+    <button v-else-if="failed" class="loading retry" @click="load">统计加载失败，点击重试</button>
   </div>
 </template>
 
@@ -420,6 +426,14 @@ const insights = computed(() => {
   display: flex;
   justify-content: center;
   padding: 40px 0;
+}
+.retry {
+  width: 100%;
+  border: 0;
+  background: none;
+  font-size: 13px;
+  color: var(--text-3);
+  cursor: pointer;
 }
 @media (min-width: 900px) {
   .stats {

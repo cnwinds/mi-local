@@ -6,9 +6,11 @@ accepts is handed to the hub, then the proxy stops listening. Tokens are never l
 """
 import asyncio
 import datetime
+import ipaddress
 import logging
 import os
 import re
+import socket
 import ssl
 import tempfile
 import time
@@ -38,10 +40,19 @@ def _now() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)
 
 
+def _constrained(cert: x509.Certificate) -> bool:
+    try:
+        cert.extensions.get_extension_for_class(x509.NameConstraints)
+        return True
+    except x509.ExtensionNotFound:
+        return False
+
+
 def _load_ca() -> tuple[ec.EllipticCurvePrivateKey, x509.Certificate]:
     if CA_KEY.exists() and CA_CERT.exists():
-        key = serialization.load_pem_private_key(CA_KEY.read_bytes(), None)
-        return key, x509.load_pem_x509_certificate(CA_CERT.read_bytes())
+        cert = x509.load_pem_x509_certificate(CA_CERT.read_bytes())
+        if _constrained(cert):
+            return serialization.load_pem_private_key(CA_KEY.read_bytes(), None), cert
     key = ec.generate_private_key(ec.SECP256R1())
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, CA_NAME),
                       x509.NameAttribute(NameOID.ORGANIZATION_NAME, "mi-local")])
@@ -51,6 +62,9 @@ def _load_ca() -> tuple[ec.EllipticCurvePrivateKey, x509.Certificate]:
         .not_valid_before(_now() - datetime.timedelta(days=1))
         .not_valid_after(_now() + datetime.timedelta(days=3650))
         .add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
+        # The phone trusts this CA, so it must be useless for any site but the lock cloud even if the key leaks.
+        .add_extension(x509.NameConstraints(permitted_subtrees=[x509.DNSName(TARGET)], excluded_subtrees=None),
+                       critical=True)
         .add_extension(x509.KeyUsage(digital_signature=True, key_cert_sign=True, crl_sign=True, content_commitment=False,
                                      key_encipherment=False, data_encipherment=False, key_agreement=False,
                                      encipher_only=False, decipher_only=False), critical=True)
@@ -63,6 +77,20 @@ def _load_ca() -> tuple[ec.EllipticCurvePrivateKey, x509.Certificate]:
     os.chmod(CA_KEY, 0o600)
     CA_CERT.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
     return key, cert
+
+
+def _is_target(host: str) -> bool:
+    return host == TARGET or host.endswith("." + TARGET)
+
+
+async def _resolve(host: str, port: int) -> str:
+    """Address to dial for a proxied request; the hub's own loopback services stay out of reach."""
+    infos = await asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    for *_, addr in infos:
+        ip = ipaddress.ip_address(addr[0].split("%")[0])
+        if ip.is_loopback or ip.is_unspecified or ip.is_link_local:
+            raise ValueError(f"refused proxy target {host}")
+    return infos[0][4][0]
 
 
 def ca_pem() -> bytes:
@@ -159,7 +187,7 @@ class LockinCapture:
             method, target, rest = head.split(b"\r\n", 1)[0].decode("latin-1").split(" ", 2)
             if method.upper() == "CONNECT":
                 host, _, port = target.rpartition(":")
-                scan = not self.done and (host == TARGET or host.endswith("." + TARGET))
+                scan = not self.done and _is_target(host)
                 if scan:
                     self.seen_lockin = True
                     if host not in self._contexts:
@@ -171,19 +199,20 @@ class LockinCapture:
                     await writer.start_tls(self._contexts[host])
                 else:
                     await writer.drain()
+                ip = await _resolve(host, int(port or 443))
                 up_reader, upstream = await asyncio.wait_for(asyncio.open_connection(
-                    host, int(port or 443), ssl=ssl.create_default_context() if scan else None,
+                    ip, int(port or 443), ssl=ssl.create_default_context() if scan else None,
                     server_hostname=host if scan else None), 15)
             else:
                 # Plain HTTP through the proxy: absolute URL in the request line.
                 url = urlsplit(target)
-                scan = (url.hostname or "").endswith(TARGET)
+                scan = _is_target(url.hostname or "")
                 if scan:
                     self._scan(head)
                 path = (url.path or "/") + (f"?{url.query}" if url.query else "")
                 head = f"{method} {path} {rest}".encode("latin-1") + head.split(b"\r\n", 1)[1]
-                up_reader, upstream = await asyncio.wait_for(
-                    asyncio.open_connection(url.hostname, url.port or 80), 15)
+                ip = await _resolve(url.hostname or "", url.port or 80)
+                up_reader, upstream = await asyncio.wait_for(asyncio.open_connection(ip, url.port or 80), 15)
                 upstream.write(head)
             pumps = [asyncio.create_task(self._pump(reader, upstream, scan)),
                      asyncio.create_task(self._pump(up_reader, writer, False))]
