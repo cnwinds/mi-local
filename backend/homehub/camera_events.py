@@ -74,7 +74,8 @@ class CameraEvents:
         return {
             "items": [{"id": u["fileId"], "time": u["createTime"] / 1000, "kind": kind_of(u.get("eventType", "")),
                        "duration": u.get("duration") or 0} for u in units],
-            "more": bool(data.get("isContinue")) and len(units) == limit,
+            # The cloud may return a short page and still have more; an empty page always ends the list.
+            "more": bool(data.get("isContinue")) and bool(units),
         }
 
     def _unit(self, camera: dict, file_id: str) -> dict:
