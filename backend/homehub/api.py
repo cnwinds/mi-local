@@ -21,7 +21,7 @@ from .hub import Hub
 from .lockin_capture import ca_pem
 from .micloud import CloudError
 from .ranges import byte_range
-from .store import floorplan_file, panels_file, scenes_file
+from .store import DATA_DIR, floorplan_file, panels_file, scenes_file
 
 log = logging.getLogger(__name__)
 hub = Hub()
@@ -340,16 +340,58 @@ class FloorRoom(BaseModel):
     outdoor: bool = False
 
 
+class FloorBackground(BaseModel):
+    """The uploaded floor plan image, placed at the origin in plan units."""
+    w: float = Field(gt=0)
+    h: float = Field(gt=0)
+    opacity: float = Field(0.35, ge=0, le=1)
+
+
 class Floorplan(BaseModel):
     view: tuple[float, float, float, float]
     rooms: list[FloorRoom]
     devices: dict[str, Point] = {}
     cameras: dict[str, Point] = {}
+    background: FloorBackground | None = None
+
+
+BACKGROUND_FILE = DATA_DIR / "floorplan-bg"
+BACKGROUND_MAX = 15 * 1024 * 1024
 
 
 @app.get("/api/floorplan")
 def get_floorplan():
     return floorplan_file.load()
+
+
+@app.put("/api/floorplan/background")
+async def set_floorplan_background(request: Request):
+    media_type = request.headers.get("content-type", "")
+    if media_type not in ("image/png", "image/jpeg", "image/webp", "image/gif"):
+        raise HTTPException(400, "只支持 PNG、JPG、WebP 或 GIF 图片")
+    body = await request.body()
+    if not body or len(body) > BACKGROUND_MAX:
+        raise HTTPException(413, "图片太大，最多 15 MB")
+    BACKGROUND_FILE.parent.mkdir(parents=True, exist_ok=True)
+    await asyncio.to_thread(BACKGROUND_FILE.write_bytes, body)
+    BACKGROUND_FILE.with_suffix(".type").write_text(media_type)
+    return {"ok": True}
+
+
+@app.get("/api/floorplan/background")
+def get_floorplan_background():
+    if not BACKGROUND_FILE.exists():
+        raise HTTPException(404, "没有户型底图")
+    type_file = BACKGROUND_FILE.with_suffix(".type")
+    media_type = type_file.read_text() if type_file.exists() else "image/png"
+    return FileResponse(BACKGROUND_FILE, media_type=media_type, headers={"Cache-Control": "private, no-cache"})
+
+
+@app.delete("/api/floorplan/background")
+def delete_floorplan_background():
+    BACKGROUND_FILE.unlink(missing_ok=True)
+    BACKGROUND_FILE.with_suffix(".type").unlink(missing_ok=True)
+    return {"ok": True}
 
 
 @app.put("/api/floorplan")

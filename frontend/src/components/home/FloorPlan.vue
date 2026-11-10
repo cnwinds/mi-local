@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, type Component } from 'vue'
 import { showFailToast, showToast } from 'vant'
-import { Cctv, Check, Droplet, Flame, Move, Snowflake, Sparkles, Wind, X } from 'lucide-vue-next'
+import { Cctv, Check, Droplet, Flame, Move, PenLine, Snowflake, Sparkles, Wind, X } from 'lucide-vue-next'
 import { api, type AcMode, type Camera, type Device, type FloorRoom, type PlanPoint } from '../../api'
 import { can, deviceList, floorplan } from '../../store'
 import { deviceStatus, isActive, panelRooms, quickToggle, shortName } from '../../rooms'
@@ -10,14 +10,14 @@ import DeviceIcon from '../DeviceIcon.vue'
 import DeviceSheet from '../DeviceSheet.vue'
 import CameraFeed from '../CameraFeed.vue'
 import CurtainGlyph from './CurtainGlyph.vue'
+import FloorPlanEditor from './FloorPlanEditor.vue'
+import { bbox, labelAt, svgPoints } from '../../floorplan'
 
 const MODE_ICONS: Record<AcMode, Component> = { cool: Snowflake, heat: Flame, dry: Droplet, fan: Wind, auto: Sparkles }
 const TONES: Record<string, string> = { light: 'warm', airer: 'warm', bath_heater: 'heat', lock: 'heat', ac: 'cool' }
 // Switches, the gateway and speakers have no state worth a spot on the map.
 const PLAN_KINDS = new Set(['light', 'ac', 'curtain', 'bath_heater', 'airer', 'plug', 'lock', 'other'])
 const onPlan = (d: Device) => PLAN_KINDS.has(d.kind) && !d.hidden && !d.model.includes('wifispeaker')
-/** Spacing, in plan units, for devices that have not been placed yet. */
-const AUTO_GAP = 34
 const LONG_PRESS_MS = 550
 
 /**
@@ -32,27 +32,18 @@ const pct = ([x, y]: PlanPoint) => ({
   left: `${((x - view.value[0]) / view.value[2]) * 100}%`,
   top: `${((y - view.value[1]) / view.value[3]) * 100}%`,
 })
-const svgPoints = (r: FloorRoom) => r.points.map((p) => p.join(',')).join(' ')
-
-function bbox(points: PlanPoint[]) {
-  const xs = points.map((p) => p[0])
-  const ys = points.map((p) => p[1])
-  const x = Math.min(...xs)
-  const y = Math.min(...ys)
-  return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y }
-}
-const labelAt = (r: FloorRoom): PlanPoint => r.label ?? ((b) => [b.x + 8, b.y + 8] as PlanPoint)(bbox(r.points))
-
+// Devices without a saved spot line up in the middle of their room, a key's width or so apart.
 function autoSpots(r: FloorRoom, n: number): PlanPoint[] {
+  const gap = view.value[2] * 0.05
   const b = bbox(r.points)
-  const cols = Math.max(1, Math.min(n, Math.floor((b.w - 16) / AUTO_GAP)))
+  const cols = Math.max(1, Math.min(n, Math.floor((b.w - gap / 2) / gap)))
   const rows = Math.ceil(n / cols)
   return Array.from({ length: n }, (_, i) => {
     const row = Math.floor(i / cols)
     const inRow = Math.min(cols, n - row * cols)
     return [
-      b.x + b.w / 2 + ((i % cols) - (inRow - 1) / 2) * AUTO_GAP,
-      b.y + b.h / 2 + 8 + (row - (rows - 1) / 2) * AUTO_GAP,
+      b.x + b.w / 2 + ((i % cols) - (inRow - 1) / 2) * gap,
+      b.y + b.h / 2 + gap / 4 + (row - (rows - 1) / 2) * gap,
     ] as PlanPoint
   })
 }
@@ -68,6 +59,7 @@ type Marker = { key: string; room: string; pos: PlanPoint } & (
 /** Positions dragged in edit mode, keyed like markers; saved together. */
 const draft = reactive<Record<string, PlanPoint>>({})
 const editing = ref(false)
+const editingRooms = ref(false)
 
 const markers = computed<Marker[]>(() => {
   const out: Marker[] = []
@@ -358,11 +350,15 @@ const stageWidth = computed(() =>
           <button class="tool" title="取消" @click="cancelEdit"><X :size="16" /></button>
           <button class="tool primary" title="保存" @click="saveEdit"><Check :size="16" /></button>
         </template>
-        <button v-else class="tool" title="调整设备位置" @click="startEdit"><Move :size="16" /></button>
+        <template v-else>
+          <button class="tool" title="编辑房间形状" @click="editingRooms = true"><PenLine :size="16" /></button>
+          <button class="tool" title="调整设备位置" @click="startEdit"><Move :size="16" /></button>
+        </template>
       </div>
     </div>
 
     <DeviceSheet :device-id="detailId" @close="detailId = null" />
+    <FloorPlanEditor v-if="editingRooms" @close="editingRooms = false" />
   </div>
 </template>
 

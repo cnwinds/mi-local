@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { showToast } from 'vant'
 import { LayoutGrid, Map as MapIcon, TabletSmartphone } from 'lucide-vue-next'
-import { floorplan } from '../store'
+import { can, floorplan } from '../store'
 import { panelRooms } from '../rooms'
 import { headline } from '../home'
 import { openWall } from '../router'
@@ -10,6 +10,7 @@ import PageHeader from '../components/PageHeader.vue'
 import RoomTile from '../components/home/RoomTile.vue'
 import FloorPlan from '../components/home/FloorPlan.vue'
 import HomeStats from '../components/home/HomeStats.vue'
+import FloorPlanEditor from '../components/home/FloorPlanEditor.vue'
 
 const now = ref(new Date())
 const timer = setInterval(() => (now.value = new Date()), 60_000)
@@ -35,6 +36,8 @@ const greeting = computed(() => {
 })
 const dateText = computed(() => now.value.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }))
 
+const creating = ref(false)
+
 function toWall() {
   openWall()
   showToast({ message: '点一下屏幕进入全屏。\n点右上角按钮可以退出', duration: 3000 })
@@ -44,6 +47,9 @@ function toWall() {
 <template>
   <div class="home">
     <PageHeader :eyebrow="dateText" :title="greeting" :subtitle="headline">
+      <button v-if="!canPlan && wide && can('admin')" class="create-plan" @click="creating = true">
+        <MapIcon :size="16" />创建户型图
+      </button>
       <button v-if="canPlan && wide" class="wall-button" title="用作墙面面板：全屏常亮显示户型图" @click="toWall">
         <TabletSmartphone :size="16" />
       </button>
@@ -65,6 +71,7 @@ function toWall() {
         <van-empty v-if="!panelRooms.length" description="还没有设备，去「设备」页同步米家" />
       </template>
     </div>
+    <FloorPlanEditor v-if="creating" @close="creating = false" />
   </div>
 </template>
 
@@ -141,6 +148,18 @@ function toWall() {
 }
 .wall-button:hover {
   color: var(--text);
+}
+.create-plan {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--accent-soft);
+  color: var(--accent-text);
 }
 
 .plan {

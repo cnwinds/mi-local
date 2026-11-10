@@ -76,12 +76,20 @@ export interface FloorRoom {
   outdoor?: boolean
 }
 
+/** The uploaded floor plan image, at the origin, `w`×`h` plan units. Shown only while editing. */
+export interface FloorBackground {
+  w: number
+  h: number
+  opacity: number
+}
+
 export interface Floorplan {
   /** viewBox: x, y, width, height */
   view: [number, number, number, number]
   rooms: FloorRoom[]
   devices: Record<string, PlanPoint>
   cameras: Record<string, PlanPoint>
+  background?: FloorBackground | null
 }
 
 export interface Scene {
@@ -330,6 +338,11 @@ export const api = {
     request<PanelItem[]>('PUT', `/panels/${encodeURIComponent(room)}`, layout),
   floorplan: () => request<Partial<Floorplan>>('GET', '/floorplan'),
   setFloorplan: (plan: Floorplan) => request<Floorplan>('PUT', '/floorplan', plan),
+  async uploadFloorplanBackground(file: File) {
+    const res = await fetch('/api/floorplan/background', { method: 'PUT', headers: { 'Content-Type': file.type }, body: file })
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail ?? res.statusText)
+  },
+  deleteFloorplanBackground: () => request<unknown>('DELETE', '/floorplan/background'),
   scenes: () => request<Scene[]>('GET', '/scenes'),
   createScene: (scene: Scene) => request<Scene>('POST', '/scenes', scene),
   updateScene: (id: string, scene: Scene) => request<Scene>('PUT', `/scenes/${id}`, scene),

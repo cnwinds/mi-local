@@ -108,6 +108,7 @@ def test_permissions():
     assert required_permission("PATCH", "/api/cameras/x") == "admin"
     assert required_permission("GET", "/api/events") == "history"
     for method, path in [("PATCH", "/api/devices/x"), ("PUT", "/api/floorplan"), ("GET", "/api/cloud"),
+                         ("GET", "/api/floorplan/background"), ("PUT", "/api/floorplan/background"),
                          ("GET", "/api/rules"), ("POST", "/api/rules/x/run"), ("GET", "/api/auth/devices"),
                          ("POST", "/api/auth/codes"), ("GET", "/api/something-new")]:
         assert required_permission(method, path) == "admin", path
