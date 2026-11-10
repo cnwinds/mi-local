@@ -78,17 +78,21 @@ class CameraEvents:
             "more": bool(data.get("isContinue")) and bool(units),
         }
 
-    def _unit(self, camera: dict, file_id: str) -> dict:
+    def _unit(self, camera: dict, file_id: str, time_ms: int | None) -> dict | None:
+        """The listed event, re-listing around its time when the hub restarted since the browser listed it."""
         unit = self._units.get(file_id)
-        if not unit or unit["did"] != camera["id"]:
-            raise KeyError(file_id)
-        return unit
+        if not unit and time_ms:
+            self.list(camera, time_ms + 1, 10)
+            unit = self._units.get(file_id)
+        return unit if unit and unit["did"] == camera["id"] else None
 
-    def thumbnail(self, camera: dict, file_id: str) -> bytes:
+    def thumbnail(self, camera: dict, file_id: str, time_ms: int | None = None) -> bytes:
         cache_key = f"img:{file_id}"
         if cached := self._cached(cache_key):
             return cached
-        unit = self._unit(camera, file_id)
+        unit = self._unit(camera, file_id, time_ms)
+        if not unit:
+            raise KeyError(file_id)
         iv = os.urandom(16)
         raw = self.cloud.camera_fetch(IMG_URL, {"did": camera["id"], "fileId": file_id, "stoId": unit.get("imgStoreId"),
                                                 "segmentIv": base64.b64encode(iv).decode()})
@@ -100,7 +104,7 @@ class CameraEvents:
         playlist = self._playlists.get(file_id)
         if playlist and time.time() - playlist["at"] < PLAYLIST_TTL:
             return playlist
-        unit = self._unit(camera, file_id)
+        unit = self._units.get(file_id) or {}
         text = self.cloud.camera_fetch(M3U8_URL, {"did": camera["id"], "model": camera["model"], "fileId": file_id,
                                                   "isAlarm": bool(unit.get("isAlarm", True)), "videoCodec": "H265"})
         playlist = {**parse_playlist(text.decode()), "at": time.time()}

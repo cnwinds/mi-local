@@ -460,8 +460,8 @@ async def camera_events(camera_id: str, before: int | None = None, limit: int = 
 
 
 @app.get("/api/cameras/{camera_id}/events/{file_id}/thumb.jpg")
-async def camera_event_thumb(camera_id: str, file_id: str, request: Request):
-    image = await _cloud_media(hub.camera_events.thumbnail, _camera(camera_id), file_id)
+async def camera_event_thumb(camera_id: str, file_id: str, request: Request, t: int | None = None):
+    image = await _cloud_media(hub.camera_events.thumbnail, _camera(camera_id), file_id, t)
     return _ranged(request, image, "image/jpeg")
 
 

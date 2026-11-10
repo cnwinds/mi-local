@@ -26,7 +26,7 @@ const clipError = ref('')
 const video = ref<HTMLVideoElement>()
 
 const base = computed(() => `/api/cameras/${encodeURIComponent(props.cameraId)}/events`)
-const thumb = (e: CameraEvent) => `${base.value}/${e.id}/thumb.jpg`
+const thumb = (e: CameraEvent) => `${base.value}/${e.id}/thumb.jpg?t=${Math.round(e.time * 1000)}`
 const clipUrl = computed(() => (selected.value && parts.value.length ? `${base.value}/${selected.value.id}/clip/${part.value}.mp4` : ''))
 
 const timeFmt = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
