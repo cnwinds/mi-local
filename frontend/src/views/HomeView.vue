@@ -12,7 +12,7 @@ const now = ref(new Date())
 const timer = setInterval(() => (now.value = new Date()), 60_000)
 onBeforeUnmount(() => clearInterval(timer))
 
-// The floor plan needs room to breathe, so phones keep the room tiles.
+// Wide screens control devices on the plan; phones get a compact plan above the room tiles.
 const wideQuery = matchMedia('(min-width: 900px)')
 const wide = ref(wideQuery.matches)
 const onWide = (e: MediaQueryListEvent) => (wide.value = e.matches)
@@ -23,8 +23,9 @@ function setMode(m: 'plan' | 'tiles') {
   mode.value = m
   localStorage.setItem('home-view', m)
 }
-const canPlan = computed(() => wide.value && !!floorplan.value)
+const canPlan = computed(() => !!floorplan.value)
 const showPlan = computed(() => canPlan.value && mode.value === 'plan')
+const showTiles = computed(() => !showPlan.value || !wide.value)
 const greeting = computed(() => {
   const h = now.value.getHours()
   return h < 5 ? '夜深了' : h < 11 ? '早上好' : h < 13 ? '中午好' : h < 18 ? '下午好' : '晚上好'
@@ -64,7 +65,7 @@ async function allAcOff() {
       </div>
     </PageHeader>
 
-    <div :class="{ dash: showPlan }">
+    <div :class="{ dash: showPlan && wide }">
       <div class="stats">
         <div class="stat card" :class="{ warm: lightsOn.length }">
           <div class="stat-icon warm"><Lightbulb :size="18" /></div>
@@ -97,9 +98,9 @@ async function allAcOff() {
           </div>
         </div>
       </div>
-  
-      <FloorPlan v-if="showPlan" class="plan" />
-      <template v-else>
+
+      <FloorPlan v-if="showPlan" :compact="!wide" class="plan" />
+      <template v-if="showTiles">
         <div class="section-label rooms-label">房间</div>
         <div class="rooms">
           <RoomTile v-for="room in panelRooms" :key="room" :room="room" />
@@ -255,6 +256,13 @@ async function allAcOff() {
   background: var(--surface);
   color: var(--text);
   box-shadow: var(--shadow-1);
+}
+
+.plan {
+  padding: 18px 16px 0;
+}
+.dash .plan {
+  padding: 0;
 }
 
 /* Floor plan on the left, the summary cards stacked beside it */

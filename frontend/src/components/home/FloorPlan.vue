@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, type Component } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, type Component } from 'vue'
 import { showFailToast, showToast } from 'vant'
 import { Cctv, Check, Droplet, Flame, Move, Snowflake, Sparkles, Wind, X } from 'lucide-vue-next'
 import { api, type AcMode, type Camera, type Device, type FloorRoom, type PlanPoint } from '../../api'
@@ -18,6 +18,10 @@ const PLAN_KINDS = new Set(['light', 'ac', 'curtain', 'bath_heater', 'airer', 'p
 const onPlan = (d: Device) => PLAN_KINDS.has(d.kind) && !d.hidden && !d.model.includes('wifispeaker')
 /** Spacing, in plan units, for devices that have not been placed yet. */
 const AUTO_GAP = 34
+const LONG_PRESS_MS = 550
+
+/** compact: a phone-sized overview where devices shrink to dots and a tap opens the room. */
+const props = defineProps<{ compact?: boolean }>()
 
 const plan = computed(() => floorplan.value!)
 const view = computed(() => plan.value.view)
@@ -80,8 +84,8 @@ const markers = computed<Marker[]>(() => {
   }
   return out
 })
-const devicesIn = (room: string) =>
-  markers.value.flatMap((m) => (m.type === 'device' && m.room === room ? [m] : []))
+const deviceMarkers = computed(() => markers.value.flatMap((m) => (m.type === 'device' ? [m] : [])))
+const devicesIn = (room: string) => deviceMarkers.value.filter((m) => m.room === room)
 
 /** Lit lights glow on the floor around them, stronger and wider with brightness. */
 const glows = computed(() =>
@@ -107,8 +111,28 @@ const fill = (d: Device) => (!isActive(d) ? 0 : d.kind === 'light' ? 50 + 0.5 * 
 const detailId = ref<string | null>(null)
 const watching = ref<Camera | null>(null)
 
+// Touch screens have no right click: holding a key opens its details instead.
+let pressTimer: ReturnType<typeof setTimeout> | undefined
+let longPressed = false
+function pressStart(m: Marker, e: PointerEvent) {
+  if (editing.value) return dragStart(m, e)
+  longPressed = false
+  clearTimeout(pressTimer)
+  if (m.type === 'device') {
+    pressTimer = setTimeout(() => {
+      longPressed = true
+      detailId.value = m.device.id
+    }, LONG_PRESS_MS)
+  }
+}
+function pressEnd() {
+  clearTimeout(pressTimer)
+  dragEnd()
+}
+onBeforeUnmount(() => clearTimeout(pressTimer))
+
 function tapDevice(d: Device) {
-  if (editing.value) return
+  if (editing.value || longPressed) return
   const run = quickToggle(d)
   if (run) run()
   else detailId.value = d.id
@@ -122,8 +146,33 @@ const onKey = (e: KeyboardEvent) => e.key === 'Escape' && (watching.value = null
 onMounted(() => document.addEventListener('keydown', onKey))
 onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
 
-// Edit mode: markers follow the pointer; the plan is saved once on 完成.
+// Edit mode: markers follow the pointer; the plan is saved once on 保存.
 const stage = ref<HTMLElement>()
+
+// Labels that would spill over the walls are dropped on small screens.
+const stagePx = ref(0)
+const observer = new ResizeObserver(([e]) => (stagePx.value = e.contentRect.width))
+watch(stage, (el, old) => {
+  if (old) observer.unobserve(old)
+  if (el) observer.observe(el)
+})
+onBeforeUnmount(() => observer.disconnect())
+/** Nearest wall to the right of a point, so L-shaped rooms are measured where the label actually sits. */
+function wallRightOf(r: FloorRoom, [x, y]: PlanPoint): number {
+  let best = Infinity
+  r.points.forEach(([x1, y1], i) => {
+    const [x2, y2] = r.points[(i + 1) % r.points.length]
+    if (y1 > y === y2 > y) return
+    const hit = x1 + ((y - y1) / (y2 - y1)) * (x2 - x1)
+    if (hit > x && hit < best) best = hit
+  })
+  return best === Infinity ? x : best
+}
+function labelFits(r: FloorRoom) {
+  if (!props.compact) return true
+  const [x, y] = labelAt(r)
+  return ((wallRightOf(r, [x, y + 6]) - x) * stagePx.value) / view.value[2] >= r.name.length * 11 - 4
+}
 let dragging: { key: string; id: number } | null = null
 function toPlan(e: PointerEvent): PlanPoint {
   const rect = stage.value!.getBoundingClientRect()
@@ -168,12 +217,14 @@ async function saveEdit() {
   }
 }
 
-const stageWidth = computed(() => `min(100%, calc((100vh - 210px) * ${view.value[2] / view.value[3]}))`)
+const stageWidth = computed(() =>
+  props.compact ? '100%' : `min(100%, calc((100vh - 210px) * ${view.value[2] / view.value[3]}))`,
+)
 </script>
 
 <template>
   <div class="fp">
-    <div ref="stage" class="stage" :class="{ editing }"
+    <div ref="stage" class="stage" :class="{ editing, compact }"
       :style="{ width: stageWidth, aspectRatio: `${view[2]} / ${view[3]}` }" @click.self="watching = null">
       <svg :viewBox="view.join(' ')" class="map" @click="watching = null">
         <defs>
@@ -199,17 +250,26 @@ const stageWidth = computed(() => `min(100%, calc((100vh - 210px) * ${view.value
       </svg>
 
       <div class="layer">
-        <button v-for="r in plan.rooms" :key="r.name" class="label" :class="{ clickable: clickable(r.name), outdoor: r.outdoor }"
-          :style="pct(labelAt(r))" :tabindex="clickable(r.name) ? 0 : -1" @click="pickRoom(r.name)">
-          <span class="label-name">{{ r.name }}</span>
-          <span v-if="roomTemp(r.name) !== undefined" class="label-temp num">{{ Math.round(roomTemp(r.name)!) }}°</span>
-        </button>
+        <template v-for="r in plan.rooms" :key="r.name">
+          <button v-if="labelFits(r)" class="label" :class="{ clickable: clickable(r.name), outdoor: r.outdoor }"
+            :style="pct(labelAt(r))" :tabindex="clickable(r.name) ? 0 : -1" @click="pickRoom(r.name)">
+            <span class="label-name">{{ r.name }}</span>
+            <span v-if="!compact && roomTemp(r.name) !== undefined" class="label-temp num">
+              {{ Math.round(roomTemp(r.name)!) }}°
+            </span>
+          </button>
+        </template>
 
-        <template v-for="m in markers" :key="m.key">
+        <template v-if="compact">
+          <span v-for="m in deviceMarkers" :key="m.key" class="dot" :style="pct(m.pos)"
+            :class="[tone(m.device), { on: isActive(m.device), offline: !m.device.state.online }]" />
+        </template>
+        <template v-for="m in markers" v-else :key="m.key">
           <button v-if="m.type === 'device'" class="mk" :style="{ ...pct(m.pos), '--fill': `${fill(m.device)}%` }"
             :class="[m.device.kind, tone(m.device), { on: isActive(m.device), offline: !m.device.state.online }]"
             :aria-label="m.device.name" @click="tapDevice(m.device)" @contextmenu.prevent="detailId = m.device.id"
-            @pointerdown="dragStart(m, $event)" @pointermove="dragMove" @pointerup="dragEnd" @pointercancel="dragEnd">
+            @pointerdown="pressStart(m, $event)" @pointermove="dragMove" @pointerup="pressEnd" @pointercancel="pressEnd"
+            @pointerleave="pressEnd">
             <template v-if="m.device.kind === 'ac' && isActive(m.device)">
               <component :is="MODE_ICONS[m.device.state.mode ?? 'auto']" :size="17" :stroke-width="2.2" />
               <span class="mk-badge num">{{ m.device.state.target_temp }}°</span>
@@ -237,7 +297,7 @@ const stageWidth = computed(() => `min(100%, calc((100vh - 210px) * ${view.value
         </div>
       </div>
 
-      <div class="tools">
+      <div v-if="!compact" class="tools">
         <template v-if="editing">
           <span class="hint">拖动图标调整位置</span>
           <button class="tool" title="取消" @click="cancelEdit"><X :size="16" /></button>
@@ -260,6 +320,7 @@ const stageWidth = computed(() => `min(100%, calc((100vh - 210px) * ${view.value
   position: relative;
   user-select: none;
   -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 .map {
   position: absolute;
@@ -373,15 +434,15 @@ const stageWidth = computed(() => `min(100%, calc((100vh - 210px) * ${view.value
 .mk:active {
   transform: scale(0.9);
 }
-.mk.warm {
+.warm {
   --c: var(--warm);
   --c-soft: var(--warm-soft);
 }
-.mk.cool {
+.cool {
   --c: var(--cool);
   --c-soft: var(--cool-soft);
 }
-.mk.heat {
+.heat {
   --c: var(--heat);
   --c-soft: var(--heat-soft);
 }
@@ -451,6 +512,29 @@ const stageWidth = computed(() => `min(100%, calc((100vh - 210px) * ${view.value
   50% {
     box-shadow: 0 0 0 6px rgb(242 107 42 / 0.25);
   }
+}
+
+/* Compact overview: a dot per device, colored only while it runs */
+.compact .label {
+  font-size: 11px;
+  font-weight: 600;
+}
+.dot {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  pointer-events: none !important;
+  transition: background 0.3s, box-shadow 0.3s;
+}
+.dot.on {
+  background: var(--c, var(--accent));
+  box-shadow: 0 0 0 3px var(--c-soft, var(--accent-soft));
+}
+.dot.offline {
+  opacity: 0.4;
 }
 
 /* Edit mode: every key can be grabbed */
