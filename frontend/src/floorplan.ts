@@ -10,6 +10,16 @@ export function bbox(points: PlanPoint[]) {
 
 export const svgPoints = (r: FloorRoom) => r.points.map((p) => p.join(',')).join(' ')
 
+/** Whether a point lies inside a polygon (even-odd rule). */
+export function inside([x, y]: PlanPoint, points: PlanPoint[]): boolean {
+  let hit = false
+  points.forEach(([x1, y1], i) => {
+    const [x2, y2] = points[(i + 1) % points.length]
+    if (y1 > y !== y2 > y && x < x1 + ((y - y1) / (y2 - y1)) * (x2 - x1)) hit = !hit
+  })
+  return hit
+}
+
 /** Default label spot: just inside the room's top left corner. */
 export const labelAt = (r: FloorRoom): PlanPoint => r.label ?? ((b) => [b.x + 8, b.y + 8] as PlanPoint)(bbox(r.points))
 

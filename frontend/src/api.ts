@@ -76,8 +76,10 @@ export interface FloorRoom {
   outdoor?: boolean
 }
 
-/** The uploaded floor plan image, at the origin, `w`×`h` plan units. Shown only while editing. */
+/** The uploaded floor plan image: top left at (x, y), `w`×`h` plan units. Shown only while editing. */
 export interface FloorBackground {
+  x?: number
+  y?: number
   w: number
   h: number
   opacity: number

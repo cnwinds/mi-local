@@ -341,7 +341,9 @@ class FloorRoom(BaseModel):
 
 
 class FloorBackground(BaseModel):
-    """The uploaded floor plan image, placed at the origin in plan units."""
+    """The uploaded floor plan image: its top left corner at (x, y), w × h in plan units."""
+    x: float = 0
+    y: float = 0
     w: float = Field(gt=0)
     h: float = Field(gt=0)
     opacity: float = Field(0.35, ge=0, le=1)

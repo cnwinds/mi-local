@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { showConfirmDialog, showFailToast, showToast } from 'vant'
-import { ImagePlus, LayoutGrid, MousePointer2, SquareDashed, Trash2, Undo2 } from 'lucide-vue-next'
+import { ImagePlus, LayoutGrid, Maximize, Minus, Move, MousePointer2, Plus, SquareDashed, Trash2, Undo2 } from 'lucide-vue-next'
 import { api, type FloorBackground, type FloorRoom, type PlanPoint } from '../../api'
 import { floorplan, rooms as homeRooms } from '../../store'
 import { panelRooms, roomDevices } from '../../rooms'
-import { autoLayout, bbox, fitView, labelAt, svgPoints } from '../../floorplan'
+import { autoLayout, bbox, fitView, inside, labelAt, svgPoints } from '../../floorplan'
 
 const emit = defineEmits<{ close: [] }>()
 
@@ -17,21 +17,41 @@ const BACKGROUND_MAX_UNITS = 2000
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v))
 const existing = floorplan.value
 const rooms = ref<FloorRoom[]>(existing ? clone(existing.rooms) : [])
-const background = ref<FloorBackground | null>(existing?.background ? { ...existing.background } : null)
+const background = ref<FloorBackground | null>(existing?.background ? { x: 0, y: 0, ...existing.background } : null)
+// Saved device and camera spots: shown as dots, and carried along when their room moves.
+const devicePos = ref<Record<string, PlanPoint>>(existing ? clone(existing.devices) : {})
+const cameraPos = ref<Record<string, PlanPoint>>(existing ? clone(existing.cameras) : {})
 const bgStamp = ref(Date.now())
-/** Set by an auto layout: old device spots belong to another drawing and are dropped on save. */
-let relaidOut = false
-
-function computeCanvas(withExisting: boolean): [number, number, number, number] {
+type View = [number, number, number, number]
+function computeCanvas(withExisting: boolean): View {
   const pts: PlanPoint[] = rooms.value.flatMap((r) => r.points)
-  if (background.value) pts.push([0, 0], [background.value.w, background.value.h])
+  const bg = background.value
+  if (bg) pts.push([bg.x ?? 0, bg.y ?? 0], [(bg.x ?? 0) + bg.w, (bg.y ?? 0) + bg.h])
   if (withExisting && existing) pts.push([existing.view[0], existing.view[1]], [existing.view[0] + existing.view[2], existing.view[1] + existing.view[3]])
   if (!pts.length) return [0, 0, 1000, 700]
   const b = bbox(pts)
   const pad = Math.max(b.w, b.h) * 0.06
   return [b.x - pad, b.y - pad, b.w + 2 * pad, b.h + 2 * pad]
 }
-const canvas = ref(computeCanvas(true))
+/** home: the whole drawing; canvas: what is on screen now, after zooming and panning. */
+const home = ref<View>(computeCanvas(true))
+const canvas = ref<View>([...home.value])
+function refit(withExisting = false) {
+  home.value = computeCanvas(withExisting)
+  canvas.value = [...home.value]
+}
+function zoomAt(factor: number, [cx, cy]: PlanPoint) {
+  const [x, y, w, h] = canvas.value
+  const nw = Math.min(home.value[2] * 4, Math.max(home.value[2] * 0.05, w * factor))
+  const f = nw / w
+  canvas.value = [cx - (cx - x) * f, cy - (cy - y) * f, w * f, h * f]
+}
+const zoomCenter = (): PlanPoint => [canvas.value[0] + canvas.value[2] / 2, canvas.value[1] + canvas.value[3] / 2]
+function onWheel(e: WheelEvent) {
+  e.preventDefault()
+  const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.value!.getScreenCTM()!.inverse())
+  zoomAt(e.deltaY > 0 ? 1.15 : 1 / 1.15, [p.x, p.y])
+}
 
 // Screen ↔ plan
 const svg = ref<SVGSVGElement>()
@@ -46,18 +66,22 @@ function toPlan(e: PointerEvent): PlanPoint {
   return [p.x, p.y]
 }
 
-// Undo: a snapshot of the rooms before every change.
+// Undo: a snapshot of everything movable before every change.
 const history = ref<string[]>([])
 const changed = ref(false)
 function remember() {
-  history.value.push(JSON.stringify(rooms.value))
+  history.value.push(JSON.stringify({ rooms: rooms.value, devices: devicePos.value, cameras: cameraPos.value, bg: background.value }))
   if (history.value.length > 80) history.value.shift()
   changed.value = true
 }
 function undo() {
   const last = history.value.pop()
   if (!last) return
-  rooms.value = JSON.parse(last)
+  const snap = JSON.parse(last)
+  rooms.value = snap.rooms
+  devicePos.value = snap.devices
+  cameraPos.value = snap.cameras
+  if (background.value && snap.bg) background.value = snap.bg
   selected.value = null
   selVertex.value = null
 }
@@ -65,7 +89,8 @@ function undo() {
 const selected = ref<number | null>(null)
 const selVertex = ref<number | null>(null)
 const sel = computed(() => (selected.value === null ? null : rooms.value[selected.value]))
-const tool = ref<'select' | 'rect'>('select')
+const tool = ref<'select' | 'rect' | 'bg'>('select')
+const markers = computed(() => [...Object.values(devicePos.value), ...Object.values(cameraPos.value)])
 const pendingName = ref('')
 
 const nameOptions = computed(() => [...new Set([...panelRooms.value, ...homeRooms.value])].filter((n) => n !== '未分配'))
@@ -118,23 +143,46 @@ function snapShift(orig: PlanPoint[], d: PlanPoint, e: PointerEvent, room: numbe
 }
 
 // Pointer gestures on the canvas, told apart by what was pressed.
+type Carried = { map: typeof devicePos; id: string; orig: PlanPoint }
 type Drag =
   | { kind: 'vertex'; room: number; index: number }
-  | { kind: 'move'; room: number; start: PlanPoint; orig: PlanPoint[]; label: PlanPoint | null }
+  | { kind: 'move'; room: number; start: PlanPoint; orig: PlanPoint[]; label: PlanPoint | null; carried: Carried[] }
   | { kind: 'label'; room: number; start: PlanPoint; orig: PlanPoint }
   | { kind: 'rect'; start: PlanPoint }
+  | { kind: 'pan'; orig: View; upp: number }
+  | { kind: 'bg-move'; start: PlanPoint; orig: FloorBackground }
+  | { kind: 'bg-scale'; orig: FloorBackground }
 let drag: Drag | null = null
 let downAt = { x: 0, y: 0 }
 let moved = false
 const rectDraft = ref<[PlanPoint, PlanPoint] | null>(null)
 
+/** Devices and cameras saved inside a room, so they move with it. */
+function carriedBy(points: PlanPoint[]): Carried[] {
+  return [devicePos, cameraPos].flatMap((map) =>
+    Object.entries(map.value)
+      .filter(([, p]) => inside(p, points))
+      .map(([id, p]) => ({ map, id, orig: [...p] as PlanPoint })),
+  )
+}
+
 function onDown(e: PointerEvent) {
-  if (e.button !== 0) return
+  if (e.button !== 0 && e.button !== 1) return
+  if (e.button === 1) e.preventDefault()
   const t = (e.target as SVGElement).dataset
   downAt = { x: e.clientX, y: e.clientY }
   moved = false
   const p = toPlan(e)
-  if (tool.value === 'rect') {
+  // Middle button, or a press on empty canvas, pans the view.
+  const empty = t.room === undefined && t.label === undefined && t.vertex === undefined && t.mid === undefined
+  if (e.button === 1 || (tool.value === 'select' && empty)) {
+    drag = { kind: 'pan', orig: [...canvas.value], upp: upp.value }
+  } else if (tool.value === 'bg' && background.value) {
+    remember()
+    drag = t.bgscale !== undefined
+      ? { kind: 'bg-scale', orig: { ...background.value } }
+      : { kind: 'bg-move', start: p, orig: { ...background.value } }
+  } else if (tool.value === 'rect') {
     const start = snapPoint(p, e)
     drag = { kind: 'rect', start }
     rectDraft.value = [start, start]
@@ -162,10 +210,8 @@ function onDown(e: PointerEvent) {
     remember()
     if (selected.value !== ri) selVertex.value = null
     selected.value = ri
-    drag = { kind: 'move', room: ri, start: p, orig: clone(rooms.value[ri].points), label: rooms.value[ri].label ?? null }
-  } else {
-    selected.value = null
-    selVertex.value = null
+    const orig = clone(rooms.value[ri].points)
+    drag = { kind: 'move', room: ri, start: p, orig, label: rooms.value[ri].label ?? null, carried: carriedBy(orig) }
   }
   if (drag) svg.value!.setPointerCapture(e.pointerId)
 }
@@ -174,18 +220,33 @@ function onMove(e: PointerEvent) {
   if (!drag) return
   if (!moved && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) < 3) return
   moved = true
+  if (drag.kind === 'pan') {
+    const { orig, upp: k } = drag
+    canvas.value = [orig[0] - (e.clientX - downAt.x) * k, orig[1] - (e.clientY - downAt.y) * k, orig[2], orig[3]]
+    return
+  }
   const p = toPlan(e)
-  if (drag.kind === 'rect') {
+  if (drag.kind === 'bg-move' && background.value) {
+    background.value.x = Math.round((drag.orig.x ?? 0) + p[0] - drag.start[0])
+    background.value.y = Math.round((drag.orig.y ?? 0) + p[1] - drag.start[1])
+  } else if (drag.kind === 'bg-scale' && background.value) {
+    // The top left corner stays put; the image keeps its proportions.
+    const { orig } = drag
+    const w = Math.max(50, p[0] - (orig.x ?? 0))
+    background.value.w = Math.round(w)
+    background.value.h = Math.round((w * orig.h) / orig.w)
+  } else if (drag.kind === 'rect') {
     rectDraft.value = [drag.start, snapPoint(p, e)]
   } else if (drag.kind === 'vertex') {
     const { room, index } = drag
     rooms.value[room].points[index] = snapPoint(p, e, (ri, qi) => ri === room && qi === index)
   } else if (drag.kind === 'move') {
-    const { room, start, orig, label } = drag
+    const { room, start, orig, label, carried } = drag
     const [dx, dy] = snapShift(orig, [p[0] - start[0], p[1] - start[1]], e, room)
     const r = rooms.value[room]
     r.points = orig.map(([x, y]) => [x + dx, y + dy] as PlanPoint)
     if (label) r.label = [label[0] + dx, label[1] + dy]
+    for (const c of carried) c.map.value[c.id] = [c.orig[0] + dx, c.orig[1] + dy]
   } else if (drag.kind === 'label') {
     rooms.value[drag.room].label = [Math.round(drag.orig[0] + p[0] - drag.start[0]), Math.round(drag.orig[1] + p[1] - drag.start[1])]
   }
@@ -204,7 +265,10 @@ function onUp() {
       tool.value = 'select'
     }
     rectDraft.value = null
-  } else if (drag && drag.kind !== 'rect' && !moved) {
+  } else if (drag?.kind === 'pan') {
+    // A click on empty canvas (no drag) clears the selection.
+    if (!moved) selected.value = selVertex.value = null
+  } else if (drag && !moved) {
     history.value.pop()
   }
   drag = null
@@ -236,7 +300,7 @@ function onKey(e: KeyboardEvent) {
     if (selVertex.value !== null) deleteVertex(selVertex.value)
     else deleteRoom()
   } else if (e.key === 'Escape') {
-    if (tool.value === 'rect') tool.value = 'select'
+    if (tool.value !== 'select') tool.value = 'select'
     else selected.value = selVertex.value = null
   }
 }
@@ -260,21 +324,41 @@ async function pickBackground(e: Event) {
     URL.revokeObjectURL(url)
     const scale = Math.min(1, BACKGROUND_MAX_UNITS / Math.max(img.naturalWidth, img.naturalHeight))
     await api.uploadFloorplanBackground(file)
-    background.value = { w: Math.round(img.naturalWidth * scale), h: Math.round(img.naturalHeight * scale), opacity: background.value?.opacity ?? 0.4 }
+    // Pixels at the origin: a plan first traced on this same image lines up exactly. Over other rooms the
+    // image needs lining up, so the editor goes straight to adjusting it.
+    background.value = {
+      x: 0,
+      y: 0,
+      w: Math.round(img.naturalWidth * scale),
+      h: Math.round(img.naturalHeight * scale),
+      opacity: background.value?.opacity ?? 0.4,
+    }
     bgStamp.value = Date.now()
     changed.value = true
-    canvas.value = computeCanvas(false)
+    refit()
+    if (rooms.value.length) tool.value = 'bg'
   } catch (err) {
     showFailToast((err as Error).message || '图片读不出来')
   } finally {
     uploading.value = false
   }
 }
+/** Stretch the image over the drawn rooms, keeping its proportions: a first step before fine alignment. */
+function fitBackgroundToRooms() {
+  const bg = background.value
+  if (!bg || !rooms.value.length) return
+  remember()
+  const b = bbox(rooms.value.flatMap((r) => r.points))
+  const k = Math.max(b.w / bg.w, b.h / bg.h)
+  Object.assign(bg, { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(bg.w * k), h: Math.round(bg.h * k) })
+  refit()
+}
 async function removeBackground() {
   await showConfirmDialog({ title: '移除户型底图', message: '画好的房间会保留。' })
   await api.deleteFloorplanBackground()
   background.value = null
   changed.value = true
+  if (tool.value === 'bg') tool.value = 'select'
 }
 
 async function relayout() {
@@ -283,9 +367,11 @@ async function relayout() {
   }
   remember()
   rooms.value = autoLayout(panelRooms.value.map((name) => ({ name, devices: roomDevices(name).length })))
-  relaidOut = true
+  // The old device spots belong to another drawing: let them line up again in their new rooms.
+  devicePos.value = {}
+  cameraPos.value = {}
   selected.value = selVertex.value = null
-  canvas.value = computeCanvas(false)
+  refit()
 }
 
 const saving = ref(false)
@@ -298,8 +384,8 @@ async function save() {
   try {
     const plan = {
       rooms: list.map((r) => ({ ...r, name: r.name.trim() })),
-      devices: relaidOut ? {} : existing?.devices ?? {},
-      cameras: relaidOut ? {} : existing?.cameras ?? {},
+      devices: devicePos.value,
+      cameras: cameraPos.value,
       background: background.value,
     }
     floorplan.value = await api.setFloorplan({ ...plan, view: fitView(plan) })
@@ -322,9 +408,9 @@ async function cancel() {
     <div class="editor">
       <div class="stage">
         <svg ref="svg" :viewBox="canvas.join(' ')" class="canvas" :class="tool" @pointerdown="onDown" @pointermove="onMove"
-          @pointerup="onUp" @pointercancel="onUp">
-          <image v-if="background" :href="`/api/floorplan/background?v=${bgStamp}`" x="0" y="0" :width="background.w"
-            :height="background.h" :opacity="background.opacity" preserveAspectRatio="none" />
+          @pointerup="onUp" @pointercancel="onUp" @wheel="onWheel" @auxclick.prevent>
+          <image v-if="background" :href="`/api/floorplan/background?v=${bgStamp}`" :x="background.x ?? 0" :y="background.y ?? 0"
+            :width="background.w" :height="background.h" :opacity="background.opacity" preserveAspectRatio="none" />
           <polygon v-for="(r, i) in rooms" :key="i" :points="svgPoints(r)" :data-room="i" class="room"
             :class="{ selected: i === selected, outdoor: r.outdoor }" />
           <text v-for="(r, i) in rooms" :key="`l${i}`" :x="labelAt(r)[0]" :y="labelAt(r)[1]" :font-size="13 * upp"
@@ -338,12 +424,24 @@ async function cancel() {
           </template>
           <rect v-if="rectDraft" class="draft" :x="Math.min(rectDraft[0][0], rectDraft[1][0])" :y="Math.min(rectDraft[0][1], rectDraft[1][1])"
             :width="Math.abs(rectDraft[1][0] - rectDraft[0][0])" :height="Math.abs(rectDraft[1][1] - rectDraft[0][1])" />
+          <circle v-for="(p, i) in markers" :key="`d${i}`" class="marker" :cx="p[0]" :cy="p[1]" :r="4 * upp" />
           <template v-for="(g, i) in guides" :key="`g${i}`">
             <line v-if="g.x !== undefined" class="guide" :x1="g.x" :x2="g.x" :y1="canvas[1]" :y2="canvas[1] + canvas[3]" />
             <line v-else class="guide" :y1="g.y" :y2="g.y" :x1="canvas[0]" :x2="canvas[0] + canvas[2]" />
           </template>
+          <template v-if="tool === 'bg' && background">
+            <rect class="bg-frame" :x="background.x ?? 0" :y="background.y ?? 0" :width="background.w" :height="background.h" />
+            <rect class="bg-handle" data-bgscale :x="(background.x ?? 0) + background.w - HANDLE_PX * upp"
+              :y="(background.y ?? 0) + background.h - HANDLE_PX * upp" :width="HANDLE_PX * 2 * upp" :height="HANDLE_PX * 2 * upp" />
+          </template>
         </svg>
+        <div class="zoom">
+          <button title="缩小" @click="zoomAt(1.25, zoomCenter())"><Minus :size="16" /></button>
+          <button title="放大" @click="zoomAt(0.8, zoomCenter())"><Plus :size="16" /></button>
+          <button title="适合窗口" @click="canvas = [...home]"><Maximize :size="15" /></button>
+        </div>
         <div v-if="tool === 'rect'" class="banner">拖出一个矩形：{{ nextName() }}　·　Esc 取消</div>
+        <div v-else-if="tool === 'bg'" class="banner">拖动底图移动，拖右下角的方块缩放　·　Esc 完成</div>
         <div v-else-if="!rooms.length" class="banner">
           {{ background ? '点右侧「画房间」，沿着墙内侧描出每个房间' : '上传户型图描出房间，或者先点「自动布局」' }}
         </div>
@@ -360,10 +458,18 @@ async function cancel() {
             </button>
             <button v-if="background" class="btn ghost" @click="removeBackground">移除</button>
           </div>
-          <div v-if="background" class="opacity">
-            <span>透明度</span>
-            <van-slider v-model="background.opacity" :min="0.1" :max="0.9" :step="0.05" bar-height="4px" />
-          </div>
+          <template v-if="background">
+            <div class="row">
+              <button class="btn" :class="{ primary: tool === 'bg' }" @click="tool = tool === 'bg' ? 'select' : 'bg'">
+                <Move :size="15" />{{ tool === 'bg' ? '完成调整' : '调整底图' }}
+              </button>
+              <button v-if="rooms.length" class="btn ghost" @click="fitBackgroundToRooms">缩放到房间大小</button>
+            </div>
+            <div class="opacity">
+              <span>透明度</span>
+              <van-slider v-model="background.opacity" :min="0.1" :max="0.9" :step="0.05" bar-height="4px" />
+            </div>
+          </template>
           <input ref="fileInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden @change="pickBackground" />
         </section>
 
@@ -396,7 +502,7 @@ async function cancel() {
           <label class="check"><input v-model="sel.outdoor" type="checkbox" />室外（虚线框，比如门口）</label>
           <button class="btn danger" @click="deleteRoom"><Trash2 :size="15" />删除这个房间</button>
           <div class="hint">
-            拖动房间整体移动，拖动顶点改形状；点边上的小圆点加顶点，双击顶点删除。拖动房间名可以挪位置。按住 Ctrl 对齐其他房间的角。
+            拖动房间整体移动（里面的设备一起走），拖动顶点改形状；点边上的小圆点加顶点，双击顶点删除。拖动房间名可以挪位置。按住 Ctrl 对齐其他房间的角。
           </div>
         </section>
 
@@ -497,6 +603,50 @@ async function cancel() {
   stroke-width: 1px;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
+}
+.marker {
+  fill: var(--text-3);
+  opacity: 0.7;
+  pointer-events: none;
+}
+.canvas.bg {
+  cursor: move;
+}
+.bg-frame {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5px;
+  stroke-dasharray: 6 4;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.bg-handle {
+  fill: var(--accent);
+  cursor: nwse-resize;
+}
+.zoom {
+  position: absolute;
+  left: 32px;
+  bottom: 32px;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--surface-glass);
+  box-shadow: var(--shadow-2);
+}
+.zoom button {
+  width: 34px;
+  height: 32px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-2);
+}
+.zoom button:hover {
+  background: var(--surface-2);
+  color: var(--text);
 }
 .banner {
   position: absolute;
