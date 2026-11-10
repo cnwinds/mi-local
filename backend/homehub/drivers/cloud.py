@@ -2,19 +2,11 @@
 
 MIoT devices use /miotspec/prop/get|set; older ones use /home/rpc/<did> with their legacy miIO methods.
 """
-import asyncio
 import time
 
 from ..micloud import MiCloud
+from .miot_transport import CloudTransport, cloud_call as _call
 from .miot_typed import TypedMapping
-
-# One request at a time: the cloud client shares a requests.Session.
-_cloud_lock = asyncio.Lock()
-
-
-async def _call(cloud: MiCloud, path: str, payload: dict):
-    async with _cloud_lock:
-        return await asyncio.to_thread(cloud.call, path, payload)
 
 
 class CloudDriver:
@@ -200,37 +192,40 @@ def legacy_fields(model: str) -> list[dict]:
 
 
 class MiotGenericDriver(CloudDriver):
-    """Any device with a MIoT spec: reads every readable property through the cloud.
+    """Any device with a MIoT spec: reads every readable property, over the LAN or through the cloud (transport).
 
     State: {"props": {"siid.piid": value}, "power": main switch if the device has one}, plus the typed state
     (brightness, mode, position…) when the record's kind is one TypedMapping knows.
     """
 
-    poll_interval = 60.0
     offline_retry = 120.0
     WRITE_SETTLE = 10.0
+    # (on the LAN, through the cloud): lights and the like poll faster so a wall switch shows on the tile quickly.
+    INTERVALS = {"typed": (5.0, 15.0), "other": (30.0, 60.0)}
 
-    def __init__(self, record: dict, cloud: MiCloud, fields: list[dict]):
+    def __init__(self, record: dict, cloud: MiCloud | None, fields: list[dict], transport=None):
         super().__init__(record, cloud)
+        self.transport = transport or CloudTransport(cloud, self.did)
         self._written: dict[str, tuple] = {}
         self._props: dict = {}
         self.kind = record.get("kind", "other")
         self.fields = fields + legacy_fields(record.get("model", ""))
         self.by_key = {f["key"]: f for f in self.fields}
         self.typed = TypedMapping(self.kind, fields)
-        # Lights and the like poll faster so a wall switch shows up on the tile quickly.
-        if self.kind in ("light", "plug", "curtain"):
-            self.poll_interval = 15.0
         main = min((f["siid"] for f in fields), default=None)
         self.power_key = next((f["key"] for f in fields if f["siid"] == main and f["prop"] == "on"), None)
 
+    @property
+    def poll_interval(self) -> float:
+        lan, cloud = self.INTERVALS["typed" if self.kind in ("light", "plug", "curtain") else "other"]
+        return lan if self.transport.name == "lan" else cloud
+
     async def poll(self) -> dict:
         spec = [f for f in self.fields if f["siid"] is not None]
-        result = await _call(self.cloud, "/miotspec/prop/get", {"params": [
-            {"did": self.did, "siid": f["siid"], "piid": f["piid"]} for f in spec]})
+        result = await self.transport.get([{"did": self.did, "siid": f["siid"], "piid": f["piid"]} for f in spec])
         props = {f"{r['siid']}.{r['piid']}": r.get("value") for r in result if r.get("code") == 0}
         if not props:
-            raise RuntimeError(f"cloud read failed: {sorted({r.get('code') for r in result})}")
+            raise RuntimeError(f"{self.transport.name} read failed: {sorted({r.get('code') for r in result})}")
         # The cloud keeps answering with the old value for a few seconds after a write.
         now = time.monotonic()
         self._written = {k: (v, t) for k, (v, t) in self._written.items() if now - t < self.WRITE_SETTLE}
@@ -238,7 +233,7 @@ class MiotGenericDriver(CloudDriver):
         legacy = [f["prop"] for f in self.fields if f["siid"] is None]
         if legacy:
             try:
-                values = await _call(self.cloud, f"/home/rpc/{self.did}", {"method": "get_prop", "params": legacy})
+                values = await self.transport.rpc("get_prop", legacy)
                 props.update({f"x.{p}": v for p, v in zip(legacy, values) if v not in ("error", None)})
             except Exception:
                 pass
@@ -267,12 +262,12 @@ class MiotGenericDriver(CloudDriver):
         return field, value
 
     async def set_props(self, values: dict) -> None:
-        """Write several properties in one cloud call."""
+        """Write several properties in one request."""
         writes = [self._coerce(k, v) for k, v in values.items()]
-        result = await _call(self.cloud, "/miotspec/prop/set", {"params": [
-            {"did": self.did, "siid": f["siid"], "piid": f["piid"], "value": v} for f, v in writes]})
+        result = await self.transport.set(
+            [{"did": self.did, "siid": f["siid"], "piid": f["piid"], "value": v} for f, v in writes])
         if any(r.get("code") not in (0, 1) for r in result):
-            raise RuntimeError(f"cloud write failed: {[r.get('code') for r in result]}")
+            raise RuntimeError(f"{self.transport.name} write failed: {[r.get('code') for r in result]}")
         now = time.monotonic()
         for f, v in writes:
             self._written[f["key"]] = (v, now)

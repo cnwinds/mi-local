@@ -11,6 +11,7 @@ from .cameras import Cameras
 from .catalog import LOCAL_FIELDS, UNASSIGNED, gateway_record, merge, rooms_from_homes
 from .drivers.gateway2 import KIND_BY_MODEL, Gateway2, Gw2DeviceDriver, Gw2DoorbellDriver
 from .drivers.cloud import CLOUD_DRIVERS, MiotGenericDriver
+from .drivers.miot_transport import CloudTransport, HybridTransport, LanTransport
 from .miot_spec import device_types, load_fields
 from .drivers.miio_wifi import DRIVERS
 from .micloud import MiCloud
@@ -223,7 +224,7 @@ class Hub:
             driver = MideaAcDriver(record)
         elif driver_name in DRIVERS:
             driver = DRIVERS[driver_name](record)
-            if driver_name == "miio" and self.cloud.logged_in:
+            if driver_name == "miio":
                 self._tasks.append(asyncio.create_task(self._upgrade_to_miot(record)))
         elif driver_name == "miot_cloud":
             # No LAN address: nothing to poll until the spec driver takes over through the cloud.
@@ -251,9 +252,29 @@ class Hub:
             return
         if not fields or self.records.get(record["id"]) is not record:
             return
+        cloud = CloudTransport(self.cloud, record["id"]) if self.cloud.logged_in else None
+        if record.get("ip") and record.get("token"):
+            transport = HybridTransport(LanTransport(record["ip"], record["token"]), cloud)
+            # Without the cloud there is no fallback: keep the plain online check unless the LAN side speaks MIoT.
+            if not cloud and not await self._lan_speaks_miot(transport, record, fields):
+                return
+        elif cloud:
+            transport = cloud
+        else:
+            return
+        if self.records.get(record["id"]) is not record:
+            return
         self._detach(record["id"])
-        self._start_driver(record["id"], MiotGenericDriver(record, self.cloud, fields))
+        self._start_driver(record["id"], MiotGenericDriver(record, self.cloud, fields, transport))
         self.broadcast({"type": "fields", "id": record["id"]})
+
+    @staticmethod
+    async def _lan_speaks_miot(transport: HybridTransport, record: dict, fields: list[dict]) -> bool:
+        params = [{"did": record["id"], "siid": f["siid"], "piid": f["piid"]} for f in fields[:4]]
+        try:
+            return any(r.get("code") == 0 for r in await transport.get(params))
+        except Exception:
+            return False
 
     def device_fields(self, device_id: str) -> list[dict]:
         return getattr(self.drivers.get(device_id), "fields", [])

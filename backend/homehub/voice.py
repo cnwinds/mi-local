@@ -15,7 +15,7 @@ import uuid
 
 import requests
 
-from .drivers.cloud import _call as cloud_call
+from .drivers.miot_transport import cloud_call
 
 log = logging.getLogger(__name__)
 
