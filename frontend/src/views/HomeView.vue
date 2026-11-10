@@ -65,7 +65,7 @@ function toWall() {
 
       <FloorPlan v-if="showPlan" :compact="!wide" class="plan" />
       <template v-if="showTiles">
-        <div class="section-label rooms-label">房间</div>
+        <div v-if="panelRooms.length" class="section-label rooms-label">房间</div>
         <div class="rooms">
           <RoomTile v-for="room in panelRooms" :key="room" :room="room" />
         </div>
