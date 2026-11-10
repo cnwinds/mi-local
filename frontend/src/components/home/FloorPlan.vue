@@ -191,7 +191,8 @@ function dragStart(m: Marker, e: PointerEvent) {
   dragging = { key: m.key, id: e.pointerId }
   ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
 }
-// Holding Shift snaps the key onto another key's row or column, or its room's center lines, and draws the guide.
+// Holding Ctrl (⌘ on a Mac) snaps the key onto another key's row or column, or its room's center lines, and draws the guide.
+// Not Shift: pressing it repeatedly sets off Windows' Sticky Keys prompt.
 const SNAP_PX = 8
 type Guide = { x1: number; y1: number; x2: number; y2: number }
 const guides = ref<Guide[]>([])
@@ -233,7 +234,7 @@ function snap(key: string, [x, y]: PlanPoint): PlanPoint {
 function dragMove(e: PointerEvent) {
   if (dragging?.id !== e.pointerId) return
   const p = toPlan(e)
-  if (e.shiftKey) draft[dragging.key] = snap(dragging.key, p)
+  if (e.ctrlKey || e.metaKey) draft[dragging.key] = snap(dragging.key, p)
   else {
     guides.value = []
     draft[dragging.key] = p
@@ -321,7 +322,7 @@ const stageWidth = computed(() =>
         <template v-for="m in markers" v-else :key="m.key">
           <button v-if="m.type === 'device'" class="mk" :style="{ ...pct(m.pos), '--fill': `${fill(m.device)}%` }"
             :class="[m.device.kind, tone(m.device), { on: isActive(m.device), offline: !m.device.state.online }]"
-            :aria-label="m.device.name" @click="tapDevice(m.device)" @contextmenu.prevent="detailId = m.device.id"
+            :aria-label="m.device.name" @click="tapDevice(m.device)" @contextmenu.prevent="!editing && (detailId = m.device.id)"
             @pointerdown="pressStart(m, $event)" @pointermove="dragMove" @pointerup="pressEnd" @pointercancel="pressEnd"
             @pointerleave="pressEnd">
             <template v-if="m.device.kind === 'ac' && isActive(m.device)">
@@ -353,7 +354,7 @@ const stageWidth = computed(() =>
 
       <div v-if="!compact && !wall" class="tools">
         <template v-if="editing">
-          <span class="hint">拖动图标调整位置，按住 Shift 对齐</span>
+          <span class="hint">拖动图标调整位置，按住 Ctrl 对齐</span>
           <button class="tool" title="取消" @click="cancelEdit"><X :size="16" /></button>
           <button class="tool primary" title="保存" @click="saveEdit"><Check :size="16" /></button>
         </template>
