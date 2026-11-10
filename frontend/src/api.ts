@@ -1,5 +1,6 @@
 export type Kind =
   | 'light' | 'plug' | 'curtain' | 'switch' | 'doorbell' | 'ac' | 'bath_heater' | 'airer' | 'lock' | 'other' | 'gateway'
+  | 'remote'
 
 export type AcMode = 'cool' | 'heat' | 'dry' | 'fan' | 'auto'
 

@@ -10,9 +10,8 @@ from .drivers.miot_typed import KIND_BY_TYPE
 UNASSIGNED = "未分配"
 LIGHT_DRIVERS = {"yeelink.light.ceiling": "yeelight", "philips.light.downlight": "philips"}
 GW2_KINDS = {"lumi.sensor_switch.v2": "switch", "lumi.plug.v1": "plug", "lumi.curtain.v1": "curtain"}
-# Cameras are picked up by cameras.py and streamed through go2rtc instead. miir.* are virtual infrared remotes:
-# they only take MIoT actions, which the spec driver doesn't send yet.
-SKIP_MODELS = (".camera.", ".cateye.", "miir.")
+# Cameras are picked up by cameras.py and streamed through go2rtc instead.
+SKIP_MODELS = (".camera.", ".cateye.")
 # Network gear, not something to switch from a home panel.
 SKIP_SPEC_TYPES = {"router", "gateway"}
 PRIVATE_NETS = tuple(ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"))
@@ -45,6 +44,9 @@ def convert(dev: dict, gateway_ids: set[str], room: str, spec_type: str | None =
         return {**base, "kind": CLOUD_KINDS[model], "driver": "cloud"}
     if model.startswith("lumi.gateway") or any(s in model for s in SKIP_MODELS):
         return None
+    # Virtual infrared remotes: a set of buttons the IR blaster sends, reachable through the cloud only.
+    if model.startswith("miir."):
+        return {**base, "kind": "remote", "driver": "miot_cloud"} if spec_type else None
     ip, token = dev.get("localip") or "", dev.get("token")
     lan = bool(token) and is_lan_ip(ip)
     if lan:

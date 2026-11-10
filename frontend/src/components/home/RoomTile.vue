@@ -12,7 +12,7 @@ const props = defineProps<{ room: string }>()
 
 const MODE_ICONS: Record<AcMode, Component> = { cool: Snowflake, heat: Flame, dry: Droplet, fan: Wind, auto: Sparkles }
 const MODE_ORDER: AcMode[] = ['cool', 'heat', 'dry', 'fan', 'auto']
-const KEY_ORDER = ['lock', 'ac', 'light', 'curtain', 'bath_heater', 'airer', 'plug', 'other']
+const KEY_ORDER = ['lock', 'ac', 'light', 'curtain', 'bath_heater', 'airer', 'plug', 'remote', 'other']
 const TONES: Record<string, string> = { light: 'warm', airer: 'warm', bath_heater: 'heat', lock: 'heat', ac: 'cool' }
 
 // Speakers and the doorbell have nothing to show or toggle here.

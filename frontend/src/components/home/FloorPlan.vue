@@ -16,7 +16,7 @@ import { bbox, labelAt, svgPoints } from '../../floorplan'
 const MODE_ICONS: Record<AcMode, Component> = { cool: Snowflake, heat: Flame, dry: Droplet, fan: Wind, auto: Sparkles }
 const TONES: Record<string, string> = { light: 'warm', airer: 'warm', bath_heater: 'heat', lock: 'heat', ac: 'cool' }
 // Switches, the gateway and speakers have no state worth a spot on the map.
-const PLAN_KINDS = new Set(['light', 'ac', 'curtain', 'bath_heater', 'airer', 'plug', 'lock', 'other'])
+const PLAN_KINDS = new Set(['light', 'ac', 'curtain', 'bath_heater', 'airer', 'plug', 'lock', 'remote', 'other'])
 const onPlan = (d: Device) => PLAN_KINDS.has(d.kind) && !d.hidden && !d.model.includes('wifispeaker')
 const LONG_PRESS_MS = 550
 

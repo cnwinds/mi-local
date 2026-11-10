@@ -1,9 +1,9 @@
 import asyncio
 
 from homehub.catalog import convert
-from homehub.drivers.cloud import MiotGenericDriver
+from homehub.drivers.cloud import MiotGenericDriver, MiotRemoteDriver
 from homehub.drivers.miot_typed import TypedMapping
-from homehub.miot_spec import parse
+from homehub.miot_spec import parse, parse_actions
 
 from test_cloud import FakeCloud
 
@@ -89,5 +89,32 @@ def test_import_types_by_spec_and_keeps_known_models():
                    "camera") is None
     wan = convert({"did": 7, "model": "x.fan.y", "localip": "8.8.8.8", **online}, set(), "R", "fan")
     assert (wan["driver"], wan["kind"], wan["hidden"]) == ("miot_cloud", "other", True)
-    assert convert({"did": 8, "model": "miir.aircondition.ir02", "localip": ""}, set(), "R", "air-conditioner") is None
+    ir = convert({"did": 8, "model": "miir.aircondition.ir02", "localip": ""}, set(), "R", "air-conditioner")
+    assert (ir["kind"], ir["driver"], ir["hidden"]) == ("remote", "miot_cloud", False)
+    assert convert({"did": 10, "model": "miir.tv.unknown", "localip": ""}, set(), "R", None) is None
     assert convert({"did": 9, "model": "xiaomi.router.rm1800", "localip": ""}, set(), "R", "router") is None
+
+
+IR_AC = {"services": [service(2, "ir-aircondition-control", prop(1, "ir-mode", "uint8"))]}
+IR_AC["services"][0]["actions"] = [
+    {"iid": 5, "type": "urn:miot-spec-v2:action:turn-off:0000:x:1", "in": []},
+    {"iid": 6, "type": "urn:miot-spec-v2:action:turn-on:0000:x:1", "in": []},
+    {"iid": 4, "type": "urn:miot-spec-v2:action:temperature-up:0000:x:1", "in": []},
+    {"iid": 3, "type": "urn:miot-spec-v2:action:set-channel-number:0000:x:1", "in": [1]},
+]
+
+
+def test_remote_buttons_get_chinese_names_and_skip_actions_with_input():
+    actions = parse_actions(IR_AC, {})
+    assert [(a["key"], a["name"]) for a in actions] == [("a.2.5", "关"), ("a.2.6", "开"), ("a.2.4", "温度 +")]
+
+
+def test_remote_driver_sends_actions_through_the_cloud():
+    cloud = FakeCloud(rpc={"code": 0})
+    driver = MiotRemoteDriver({"id": "8", "model": "miir.aircondition.ir02", "kind": "remote"}, cloud,
+                              parse_actions(IR_AC, {}))
+    assert asyncio.run(driver.poll()) == {}
+    asyncio.run(driver.command("run_action", {"key": "a.2.4"}))
+    asyncio.run(driver.command("turn_on"))
+    sent = [c[1]["params"] for c in cloud.calls if c[0] == "/miotspec/action"]
+    assert [(p["siid"], p["aiid"]) for p in sent] == [(2, 4), (2, 6)]

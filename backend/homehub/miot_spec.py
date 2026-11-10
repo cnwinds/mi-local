@@ -145,8 +145,36 @@ def parse(spec: dict, zh: dict[str, str]) -> list[dict]:
     return fields
 
 
-def load_fields(model: str) -> list[dict] | None:
-    """Fields for a model, from the disk cache or miot-spec.org. None if the model has no spec."""
+# Infrared remote buttons ship without translations; keyed by the action's urn name.
+ACTION_ZH = {
+    "turn-on": "开", "turn-off": "关", "temperature-up": "温度 +", "temperature-down": "温度 −",
+    "fan-speed-up": "风速 +", "fan-speed-down": "风速 −", "channel-up": "频道 +", "channel-down": "频道 −",
+    "volume-up": "音量 +", "volume-down": "音量 −", "mute-on": "静音", "mute-off": "取消静音",
+    "horizontal-swing-on": "摇头", "horizontal-swing-off": "停止摇头", "input-source-switch": "信号源",
+}
+
+
+def parse_actions(spec: dict, zh: dict[str, str]) -> list[dict]:
+    """Actions that take no input, as fields: {key "a.siid.aiid", siid, aiid, service, svc, name, prop, format "action"}."""
+    actions = []
+    for s in spec.get("services", []):
+        sk = f"service:{s['iid']:03}"
+        service = _zh(zh.get(sk), SERVICE_ZH, _name(s["type"]), s.get("description") or _name(s["type"]))
+        for a in s.get("actions", []):
+            if a.get("in"):
+                continue
+            name = _name(a["type"])
+            actions.append({
+                "key": f"a.{s['iid']}.{a['iid']}", "siid": s["iid"], "aiid": a["iid"], "service": service,
+                "svc": _name(s["type"]), "name": _zh(zh.get(f"{sk}:action:{a['iid']:03}"), ACTION_ZH, name, name),
+                "prop": name, "format": "action", "unit": None, "range": None, "values": [], "writable": True,
+                "vendor": a["type"].split(":")[1] != "miot-spec-v2",
+            })
+    return actions
+
+
+def _cached_spec(model: str) -> dict | None:
+    """{"urn", "spec", "zh"} from the disk cache or miot-spec.org; None if the model has no spec."""
     cache = CACHE_DIR / f"{model}.json"
     cached = json.loads(cache.read_text(encoding="utf-8")) if cache.exists() else {}
     if "spec" not in cached:
@@ -162,4 +190,16 @@ def load_fields(model: str) -> list[dict] | None:
         cached = {"urn": urn, "spec": spec, "zh": zh}
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
         cache.write_text(json.dumps(cached, ensure_ascii=False), encoding="utf-8")
-    return parse(cached["spec"], cached["zh"])
+    return cached
+
+
+def load_fields(model: str) -> list[dict] | None:
+    """Readable properties of a model as display fields. None if the model has no spec."""
+    cached = _cached_spec(model)
+    return parse(cached["spec"], cached["zh"]) if cached else None
+
+
+def load_actions(model: str) -> list[dict] | None:
+    """Input-free actions of a model, e.g. an infrared remote's buttons. None if the model has no spec."""
+    cached = _cached_spec(model)
+    return parse_actions(cached["spec"], cached["zh"]) if cached else None

@@ -10,9 +10,9 @@ from .camera_events import CameraEvents
 from .cameras import Cameras
 from .catalog import LOCAL_FIELDS, UNASSIGNED, gateway_record, merge, rooms_from_homes
 from .drivers.gateway2 import KIND_BY_MODEL, Gateway2, Gw2DeviceDriver, Gw2DoorbellDriver
-from .drivers.cloud import CLOUD_DRIVERS, MiotGenericDriver
+from .drivers.cloud import CLOUD_DRIVERS, MiotGenericDriver, MiotRemoteDriver
 from .drivers.miot_transport import CloudTransport, HybridTransport, LanTransport
-from .miot_spec import device_types, load_fields
+from .miot_spec import device_types, load_actions, load_fields
 from .drivers.miio_wifi import DRIVERS
 from .micloud import MiCloud
 from .rules import RuleEngine
@@ -241,9 +241,10 @@ class Hub:
 
     async def _upgrade_to_miot(self, record: dict) -> None:
         """Swap the plain online check for a driver that reads every property in the device's MIoT spec."""
+        remote = record.get("kind") == "remote"
         for attempt in range(5):
             try:
-                fields = await asyncio.to_thread(load_fields, record["model"])
+                fields = await asyncio.to_thread(load_actions if remote else load_fields, record["model"])
                 break
             except Exception as e:
                 log.debug("spec for %s unavailable: %s", record["model"], e)
@@ -251,6 +252,12 @@ class Hub:
         else:
             return
         if not fields or self.records.get(record["id"]) is not record:
+            return
+        if remote:
+            if self.cloud.logged_in:
+                self._detach(record["id"])
+                self._start_driver(record["id"], MiotRemoteDriver(record, self.cloud, fields))
+                self.broadcast({"type": "fields", "id": record["id"]})
             return
         cloud = CloudTransport(self.cloud, record["id"]) if self.cloud.logged_in else None
         if record.get("ip") and record.get("token"):

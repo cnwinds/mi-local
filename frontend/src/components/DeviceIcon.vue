@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, type Component } from 'vue'
 import {
-  AirVent, BellRing, Blinds, Box, CircleDot, CookingPot, Droplets, Fish, Heater, LampCeiling, LampDesk, LampFloor,
-  Lightbulb, Lock, Plug, Router, Shirt, Speaker, WashingMachine, Wind,
+  AirVent, BellRing, Blinds, Box, CircleDot, CookingPot, Droplets, Fan, Fish, Heater, LampCeiling, LampDesk, LampFloor,
+  Lightbulb, Lock, Plug, RadioReceiver, Router, Shirt, Speaker, Tv, WashingMachine, Wind,
 } from 'lucide-vue-next'
 import type { Kind } from '../api'
 import Downlight from './icons/Downlight.vue'
@@ -19,9 +19,10 @@ const props = defineProps<{
 
 const BY_KIND: Partial<Record<Kind, Component>> = {
   light: Lightbulb, curtain: Blinds, plug: Plug, switch: CircleDot, doorbell: BellRing, ac: AirVent,
-  bath_heater: Heater, airer: Shirt, gateway: Router, lock: Lock,
+  bath_heater: Heater, airer: Shirt, gateway: Router, lock: Lock, remote: RadioReceiver,
 }
 const BY_MODEL: [string, Component][] = [
+  ['miir.aircondition', AirVent], ['miir.fan', Fan], ['miir.tv', Tv], ['miir.stb', Tv], ['miir.projector', Tv],
   ['wifispeaker', Speaker], ['washer', WashingMachine], ['fishbowl', Fish], ['waterheater', Droplets],
   ['waterpuri', Droplets], ['hood', Wind], ['cooker', CookingPot], ['microwave', CookingPot], ['fan', Wind],
   ['airpurifier', Wind], ['derh', Droplets], ['sread', LampDesk], ['.light.', Lightbulb],
@@ -40,7 +41,7 @@ const icon = computed(() => {
     const hit = LIGHTS.find(([re]) => re.test(text))
     if (hit) return hit[1]
   }
-  if (props.kind === 'other' && props.model) {
+  if ((props.kind === 'other' || props.kind === 'remote') && props.model) {
     const hit = BY_MODEL.find(([key]) => props.model!.includes(key))
     if (hit) return hit[1]
   }

@@ -4,9 +4,9 @@ import { deviceFields, deviceList, ensureFields, panels, rooms, sendCommand } fr
 import { summarize } from './miot'
 
 /** Wireless switches and the gateway are inputs, not things to operate from a panel. */
-const PANEL_KINDS = new Set(['light', 'ac', 'curtain', 'bath_heater', 'airer', 'lock', 'plug', 'doorbell', 'other'])
+const PANEL_KINDS = new Set(['light', 'ac', 'curtain', 'bath_heater', 'airer', 'lock', 'plug', 'doorbell', 'remote', 'other'])
 const LARGE_KINDS = new Set(['light', 'ac', 'curtain', 'bath_heater', 'airer', 'lock'])
-const KIND_ORDER = ['lock', 'light', 'ac', 'bath_heater', 'curtain', 'airer', 'plug', 'doorbell', 'other']
+const KIND_ORDER = ['lock', 'light', 'ac', 'bath_heater', 'curtain', 'airer', 'plug', 'doorbell', 'remote', 'other']
 
 /** Appliances get a full card once they report something worth showing; offline ones stay compact. */
 const isLarge = (d: Device) =>
@@ -103,6 +103,8 @@ export function deviceStatus(d: Device): string {
     }
     case 'airer':
       return s.light ? '照明开' : '在线'
+    case 'remote':
+      return '红外遥控'
   }
   if (s.props) ensureFields(d.id)
   return summarize(deviceFields[d.id] ?? [], s.props) || (s.power === undefined ? '在线' : s.power ? '开启' : '关闭')
@@ -121,6 +123,7 @@ export function roomSize(list: Device[]): RoomSize {
 
 const KIND_LABELS: Partial<Record<Device['kind'], string>> = {
   light: '灯', ac: '空调', curtain: '窗帘', plug: '插座', bath_heater: '浴霸', airer: '晾衣架', lock: '门锁',
+  remote: '遥控',
 }
 
 /** "卧室筒灯" in 卧室 → "筒灯"; falls back to the kind when nothing is left. */

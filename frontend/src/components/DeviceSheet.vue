@@ -10,6 +10,7 @@ import BathHeaterTile from './tiles/BathHeaterTile.vue'
 import AirerTile from './tiles/AirerTile.vue'
 import MiotPanel from './MiotPanel.vue'
 import LockPanel from './LockPanel.vue'
+import RemotePanel from './RemotePanel.vue'
 import DeviceSettings from './DeviceSettings.vue'
 
 const props = defineProps<{ deviceId: string | null }>()
@@ -107,6 +108,7 @@ function cmd(action: string, value?: unknown, optimistic?: Record<string, unknow
         </template>
 
         <div v-if="s.online && device.kind === 'plug'" class="row-label">当前功率 <span class="num">{{ s.load_power ?? 0 }} W</span></div>
+        <RemotePanel v-if="s.online && device.kind === 'remote'" :device="device" />
         <LockPanel v-if="s.online && device.kind === 'lock'" :device="device" />
         <div v-if="!s.online" class="tip">{{ device.kind === 'lock' ? '连不上鹿客云。如果一直这样，可能是令牌过期了：到「设备」页点「添加设备」→「鹿客门锁」更新令牌' : '设备离线，暂时连不上' }}</div>
         <MiotPanel v-else-if="s.props" :device="device" />

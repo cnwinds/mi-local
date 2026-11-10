@@ -290,6 +290,43 @@ class MiotGenericDriver(CloudDriver):
         raise ValueError(f"unsupported action {action}")
 
 
+class MiotRemoteDriver(CloudDriver):
+    """A virtual infrared remote (miir.*): the IR blaster sends a code per MIoT action; there is no state to read.
+
+    fields: the remote's buttons (miot_spec.load_actions), run with action "run_action", value {"key": "a.siid.aiid"}.
+    """
+
+    kind = "remote"
+    # Nothing to poll; the loop only keeps the device marked online.
+    poll_interval = 3600.0
+
+    def __init__(self, record: dict, cloud: MiCloud, actions: list[dict]):
+        super().__init__(record, cloud)
+        self.fields = actions
+        self.by_key = {a["key"]: a for a in actions}
+
+    async def poll(self) -> dict:
+        return {}
+
+    async def run(self, action: dict) -> None:
+        result = await _call(self.cloud, "/miotspec/action", {"params": {
+            "did": self.did, "siid": action["siid"], "aiid": action["aiid"], "in": []}})
+        code = (result or {}).get("code", 0) if isinstance(result, dict) else 0
+        if code not in (0, 1):
+            raise RuntimeError(f"cloud action failed: {code}")
+
+    async def command(self, action: str, value=None) -> None:
+        if action == "run_action":
+            target = self.by_key.get((value or {}).get("key", ""))
+        elif action in ("turn_on", "turn_off"):
+            target = next((a for a in self.fields if a["prop"] == action.replace("_", "-")), None)
+        else:
+            target = None
+        if not target:
+            raise ValueError(f"unsupported action {action}")
+        await self.run(target)
+
+
 CLOUD_DRIVERS = {
     "xiaomi.aircondition.ma2": XiaomiAcC1,
     "lumi.acpartner.v2": AcPartnerV2,
