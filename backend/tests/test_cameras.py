@@ -27,14 +27,16 @@ def test_source_urls():
     hd = "xiaomi://10001:cn@192.168.1.156?did=100000003&model=chuangmi.camera.ipc009"
     assert source(camera, "10001", "hd") == hd
     assert source(camera, "10001", "sd") == hd + "&subtype=sd"
+    assert source(camera, "10001", "hd3") == hd + "&subtype=3"
     assert stream_name("100000003", "sd") == "cam_100000003_sd"
 
 
 def test_register_only_touches_changed_streams(monkeypatch):
     cam = cameras.Cameras.__new__(cameras.Cameras)
     cam.items = [{"id": "1", "ip": "192.168.1.5", "model": "isa.camera.hlc7"}]
-    current = {"cam_1_hd": {"producers": [{"url": source(cam.items[0], "9", "hd")}]},
-               "cam_1_sd": {"producers": [{"url": "xiaomi://9:cn@192.168.1.4?did=1&model=isa.camera.hlc7&subtype=sd"}]}}
+    # go2rtc masks the account part of every source URL it reports
+    current = {"cam_1_hd": {"producers": [{"url": "xiaomi://***@192.168.1.5?did=1&model=isa.camera.hlc7"}]},
+               "cam_1_sd": {"producers": [{"url": "xiaomi://***@192.168.1.4?did=1&model=isa.camera.hlc7&subtype=sd"}]}}
     calls = []
 
     class Response:
@@ -48,4 +50,4 @@ def test_register_only_touches_changed_streams(monkeypatch):
     monkeypatch.setattr(cameras.requests, "request",
                         lambda method, url, params, timeout: calls.append((method, params["name"])) or Response())
     cam._register("9")
-    assert calls == [("PATCH", "cam_1_sd")]
+    assert calls == [("PATCH", "cam_1_sd"), ("PUT", "cam_1_hd3")]

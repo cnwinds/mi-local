@@ -3,7 +3,10 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { VideoOff } from 'lucide-vue-next'
 import { CameraPlayer, type PlayerState } from '../cameraPlayer'
 
-const props = defineProps<{ cameraId: string; quality: 'sd' | 'hd'; fit?: 'cover' | 'contain' }>()
+const props = withDefaults(
+  defineProps<{ cameraId: string; quality: 'sd' | 'hd' | 'hd3'; fit?: 'cover' | 'contain'; retry?: boolean }>(),
+  { fit: 'cover', retry: true },
+)
 const emit = defineEmits<{ state: [state: PlayerState, error: { text: string; fatal: boolean } | null] }>()
 
 const video = ref<HTMLVideoElement>()
@@ -29,6 +32,7 @@ function start() {
       emit('state', s, error.value)
     },
     (url) => (frame.value = url),
+    props.retry,
   )
   player.start()
 }
@@ -53,7 +57,7 @@ watch(() => [props.cameraId, props.quality], start)
 </script>
 
 <template>
-  <div class="feed" :class="fit ?? 'cover'">
+  <div class="feed" :class="fit">
     <video v-show="!frame" ref="video" muted playsinline autoplay disablepictureinpicture />
     <img v-if="frame" :src="frame" alt="" />
     <div v-if="state === 'connecting'" class="status"><van-loading size="22px" color="rgba(255,255,255,0.8)" /></div>

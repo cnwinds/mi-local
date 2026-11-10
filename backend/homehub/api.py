@@ -477,7 +477,7 @@ async def camera_event_clip_part(camera_id: str, file_id: str, index: int, reque
 
 
 @app.websocket("/api/cameras/{camera_id}/ws")
-async def camera_stream(ws: WebSocket, camera_id: str, quality: Literal["sd", "hd"] = "sd"):
+async def camera_stream(ws: WebSocket, camera_id: str, quality: Literal["sd", "hd", "hd3"] = "sd"):
     if not hub.cameras.get(camera_id):
         await ws.close(code=4404)
         return

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Cctv, Maximize, Minimize, VideoOff, X } from 'lucide-vue-next'
 import PageHeader from '../components/PageHeader.vue'
 import CameraEvents from '../components/CameraEvents.vue'
@@ -14,9 +14,7 @@ const states = ref<Record<string, PlayerState>>({})
 const showHidden = ref(false)
 const rechecking = ref<string | null>(null)
 const viewing = ref<Camera | null>(null)
-const viewQuality = ref<'sd' | 'hd'>('hd')
 const viewMode = ref<'live' | 'events'>('live')
-const viewDowngraded = ref(false)
 const wall = ref(false)
 const root = ref<HTMLElement>()
 
@@ -60,23 +58,50 @@ async function recheck(camera: Camera) {
   }
 }
 
-function open(camera: Camera) {
-  viewing.value = camera
-  viewMode.value = 'live'
-  viewQuality.value = 'hd'
-  viewDowngraded.value = false
+// The viewer opens on the SD stream the wall is already playing, which shows within a second or two.
+// HD needs its own camera session (several seconds, and some models only answer at level 3), so it
+// connects underneath and takes over once it plays; when no HD level answers, SD simply stays.
+type HdLevel = 'hd' | 'hd3'
+const HD_LEVELS: HdLevel[] = ['hd', 'hd3']
+const hdTrying = ref<HdLevel | null>(null)
+const hdShown = ref(false)
+let hdQueue: HdLevel[] = []
+const hdMemo = (id: string) => `mi-local:camera-hd:${id}`
+
+function startHd(id: string) {
+  const known = localStorage.getItem(hdMemo(id)) as HdLevel | null
+  hdQueue = known && HD_LEVELS.includes(known) ? [known, ...HD_LEVELS.filter((l) => l !== known)] : [...HD_LEVELS]
+  hdShown.value = false
+  hdTrying.value = hdQueue.shift() ?? null
 }
 
-// Some cameras only answer in SD; drop to it once rather than retrying HD forever.
-function onViewState(state: PlayerState, error: { fatal: boolean } | null) {
+function onHdState(state: PlayerState) {
+  const id = viewing.value?.id
+  if (!id || !hdTrying.value) return
+  if (state === 'live') {
+    hdShown.value = true
+    localStorage.setItem(hdMemo(id), hdTrying.value)
+  } else if (state === 'error') {
+    if (localStorage.getItem(hdMemo(id)) === hdTrying.value) localStorage.removeItem(hdMemo(id))
+    hdShown.value = false
+    hdTrying.value = hdQueue.shift() ?? null
+  }
+}
+
+function onSdViewState(_state: PlayerState, error: { fatal: boolean } | null) {
   if (error?.fatal) {
     viewing.value = null
     api.cameras().then((list) => (cameras.value = list))
-  } else if (state === 'error' && error && viewQuality.value === 'hd' && !viewDowngraded.value) {
-    viewQuality.value = 'sd'
-    viewDowngraded.value = true
   }
 }
+
+function open(camera: Camera) {
+  viewing.value = camera
+  viewMode.value = 'live'
+  startHd(camera.id)
+}
+
+watch(viewMode, (mode) => mode === 'live' && viewing.value && startHd(viewing.value.id))
 
 let wakeLock: WakeLockSentinel | null = null
 async function enterWall() {
@@ -125,7 +150,7 @@ onBeforeUnmount(() => {
 
     <div class="grid" :style="wall ? wallGrid : undefined">
       <button v-for="c in visible" :key="c.id" class="tile" @click="open(c)">
-        <CameraFeed v-if="viewing?.id !== c.id" :camera-id="c.id" quality="sd" @state="(s, e) => onState(c.id, s, e)" />
+        <CameraFeed :camera-id="c.id" quality="sd" @state="(s, e) => onState(c.id, s, e)" />
         <div class="label">
           <span class="live-dot" :class="{ on: states[c.id] === 'live' }" />
           <span class="name">{{ c.name }}</span>
@@ -166,7 +191,7 @@ onBeforeUnmount(() => {
           <div class="viewer-title">
             <span v-if="viewMode === 'live'" class="live-dot" :class="{ on: states[`view:${viewing.id}`] === 'live' }" />
             <span class="viewer-name">{{ viewing.name }}</span>
-            <span v-if="viewMode === 'live'" class="quality">{{ viewQuality === 'hd' ? '高清' : '标清' }}</span>
+            <span v-if="viewMode === 'live'" class="quality">{{ hdShown ? '高清' : '标清' }}</span>
           </div>
           <div class="mode-switch">
             <button :class="{ on: viewMode === 'live' }" @click="viewMode = 'live'">实时</button>
@@ -175,8 +200,13 @@ onBeforeUnmount(() => {
           <button class="round-button dark" title="关闭" @click="viewing = null"><X :size="20" /></button>
         </div>
         <div class="viewer-stage">
-          <CameraFeed v-if="viewMode === 'live'" :camera-id="viewing.id" :quality="viewQuality" fit="contain"
-            @state="(s, e) => { onState(`view:${viewing!.id}`, s, null); onViewState(s, e) }" />
+          <template v-if="viewMode === 'live'">
+            <CameraFeed v-if="!hdShown" :camera-id="viewing.id" quality="sd" fit="contain"
+              @state="(s, e) => { onState(`view:${viewing!.id}`, s, null); onSdViewState(s, e) }" />
+            <CameraFeed v-if="hdTrying" :key="hdTrying" class="hd-layer" :class="{ shown: hdShown }" :camera-id="viewing.id"
+              :quality="hdTrying" fit="contain" :retry="false"
+              @state="(s) => { onHdState(s); if (hdShown) onState(`view:${viewing!.id}`, s, null) }" />
+          </template>
           <CameraEvents v-else :camera-id="viewing.id" />
         </div>
       </div>
@@ -406,6 +436,17 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.hd-layer {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s;
+}
+.hd-layer.shown {
+  opacity: 1;
+  pointer-events: auto;
+}
 .mode-switch {
   flex: none;
   display: flex;
@@ -433,6 +474,7 @@ onBeforeUnmount(() => {
   background: rgba(255, 255, 255, 0.16);
 }
 .viewer-stage {
+  position: relative;
   flex: 1;
   min-height: 0;
   padding-bottom: env(safe-area-inset-bottom);

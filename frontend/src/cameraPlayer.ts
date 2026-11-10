@@ -38,17 +38,20 @@ export class CameraPlayer {
   private url: string
   private onState: (state: PlayerState, detail?: { text: string; fatal: boolean }) => void
   private onFrame: (url: string) => void
+  private retry: boolean
 
   constructor(
     video: HTMLVideoElement,
     url: string,
     onState: (state: PlayerState, detail?: { text: string; fatal: boolean }) => void,
     onFrame: (url: string) => void,
+    retry = true,
   ) {
     this.video = video
     this.url = url
     this.onState = onState
     this.onFrame = onFrame
+    this.retry = retry
   }
 
   start() {
@@ -187,6 +190,8 @@ export class CameraPlayer {
     this.ws = null
     ws?.close()
     this.onState('error', error)
-    if (!error.fatal) this.retryTimer = window.setTimeout(() => !this.stopped && this.connect(), RECONNECT_DELAY)
+    if (!error.fatal && this.retry) {
+      this.retryTimer = window.setTimeout(() => !this.stopped && this.connect(), RECONNECT_DELAY)
+    }
   }
 }

@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from urllib.parse import quote
 
 import requests
@@ -21,7 +22,9 @@ log = logging.getLogger(__name__)
 GO2RTC = os.environ.get("HUB_GO2RTC", "http://127.0.0.1:1984")
 GO2RTC_WS = "ws" + GO2RTC.removeprefix("http")
 CAMERA_HINTS = (".camera.", ".cateye.")
-QUALITIES = ("sd", "hd")
+# "hd3" is the MISS quality level 3: some models keep their HD stream there and never answer level 2.
+QUALITIES = ("sd", "hd", "hd3")
+SUBTYPES = {"sd": "sd", "hd3": "3"}
 # Browser -> go2rtc messages that only start playback; offers for other transports are dropped.
 CLIENT_TYPES = {"mse", "mjpeg"}
 LOCAL_FIELDS = ("hidden", "unsupported")
@@ -53,7 +56,12 @@ def stream_name(camera_id: str, quality: str) -> str:
 
 def source(camera: dict, user_id: str, quality: str) -> str:
     url = f"xiaomi://{user_id}:cn@{camera['ip']}?did={camera['id']}&model={camera['model']}"
-    return url + "&subtype=sd" if quality == "sd" else url
+    return f"{url}&subtype={SUBTYPES[quality]}" if quality in SUBTYPES else url
+
+
+def masked(url: str) -> str:
+    """go2rtc hides the account part of source URLs in its API; compare ours the same way."""
+    return re.sub(r"^(\w+://)[^@/]*@", r"\1***@", url)
 
 
 class Cameras:
@@ -91,8 +99,8 @@ class Cameras:
         for camera in self.items:
             for quality in QUALITIES:
                 name, src = stream_name(camera["id"], quality), source(camera, user_id, quality)
-                urls = [p.get("url") for p in (current.get(name) or {}).get("producers") or []]
-                if urls == [src]:
+                urls = [masked(p.get("url", "")) for p in (current.get(name) or {}).get("producers") or []]
+                if urls == [masked(src)]:
                     continue
                 method = "PATCH" if name in current else "PUT"
                 requests.request(method, f"{GO2RTC}/api/streams", params={"name": name, "src": src},
