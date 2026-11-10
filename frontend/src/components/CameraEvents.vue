@@ -102,7 +102,7 @@ watch(
 <template>
   <div class="events-view">
     <div class="player">
-      <video v-if="clipUrl" ref="video" :key="clipUrl" :src="clipUrl" :poster="selected ? thumb(selected) : undefined"
+      <video v-if="clipUrl" ref="video" :src="clipUrl" :poster="selected ? thumb(selected) : undefined"
         controls playsinline preload="metadata" @ended="onEnded" @error="clipError = '这段视频播放不了'" />
       <img v-else-if="selected" :src="thumb(selected)" alt="" class="poster" />
       <div v-if="selected && !clipUrl && !clipError" class="overlay"><van-loading size="24px" color="rgba(255,255,255,0.8)" /></div>
