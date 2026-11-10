@@ -14,6 +14,8 @@ class CloudDriver:
     fields: list[dict] = []
     poll_interval = 30.0
     offline_retry = 60.0
+    # Reads come from the cloud, which caches them: Mi Home's own online flag decides whether the device is up.
+    via_cloud = True
 
     def __init__(self, record: dict, cloud: MiCloud):
         self.record = record
@@ -219,6 +221,10 @@ class MiotGenericDriver(CloudDriver):
     def poll_interval(self) -> float:
         lan, cloud = self.INTERVALS["typed" if self.kind in ("light", "plug", "curtain") else "other"]
         return lan if self.transport.name == "lan" else cloud
+
+    @property
+    def via_cloud(self) -> bool:
+        return self.transport.name == "cloud"
 
     async def poll(self) -> dict:
         spec = [f for f in self.fields if f["siid"] is not None]

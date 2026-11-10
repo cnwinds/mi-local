@@ -77,3 +77,18 @@ def test_light_on_the_lan_polls_fast_and_writes_locally():
     assert driver.poll_interval == 5.0
     asyncio.run(driver.command("set_brightness", 30))
     assert lan.calls[-1][0] == "set" and not cloud.calls
+
+
+def test_cloud_reads_defer_to_mi_homes_online_flag():
+    from homehub.drivers.cloud import MiotGenericDriver
+    from homehub.drivers.miot_transport import CloudTransport, HybridTransport
+    from homehub.micloud import MiCloud
+
+    cloud = MiCloud({"service_token": "x"})
+    cloud.call = lambda path, payload: {"list": [{"did": 7, "isOnline": False}, {"did": "8", "isOnline": True}]}
+    assert cloud.online_status() == {"7": False, "8": True}
+
+    via_cloud = MiotGenericDriver({"id": "7"}, cloud, [], CloudTransport(cloud, "7"))
+    assert via_cloud.via_cloud
+    lan = HybridTransport(object(), None)
+    assert not MiotGenericDriver({"id": "7"}, cloud, [], lan).via_cloud

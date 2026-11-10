@@ -29,6 +29,7 @@ GW2_NAMES = {"switch": "无线开关", "plug": "插座", "curtain": "窗帘"}
 PUBLIC_FIELDS = ("id", "name", "room", "kind", "model", "hidden")
 DRIVER_FIELDS = ("driver", "ip", "token", "sid", "midea_token", "device_id")
 CLOUD_SYNC_INTERVAL = 30 * 60
+CLOUD_ONLINE_INTERVAL = 5 * 60
 DOORBELL_ID = "gw2.doorbell"
 GW_DRIVERS = ("gw2", "gw2bell")
 USAGE_KINDS = {"light", "plug", "ac", "bath_heater", "other"}
@@ -62,6 +63,8 @@ class Hub:
         self.cloud_status: dict = {"last_sync": None, "last_error": None, "summary": None, "login": None}
         self._poll_tasks: dict[str, asyncio.Task] = {}
         self._poll_failures: dict[str, int] = {}
+        # did -> online, as Mi Home reports it; refreshed by every sync and every few minutes.
+        self.cloud_online: dict[str, bool] = {}
         self._tasks: list[asyncio.Task] = []
         self._sync_lock = asyncio.Lock()
         self.pairing: dict = {"until": 0.0, "found": []}
@@ -81,6 +84,7 @@ class Hub:
         for record in self.records.values():
             self._attach(record)
         self._tasks.append(asyncio.create_task(self._cloud_loop()))
+        self._tasks.append(asyncio.create_task(self._cloud_online_loop()))
         self._tasks.append(asyncio.create_task(self._gateway_watch()))
         self._tasks.append(asyncio.create_task(self.voice.run()))
 
@@ -317,8 +321,28 @@ class Hub:
                     self.update_state(device_id, {"online": False})
             else:
                 self._poll_failures.pop(device_id, None)
-                self.update_state(device_id, {"online": True, **state})
+                online = state.get("online", True) and not self._offline_in_cloud(device_id, driver)
+                self.update_state(device_id, {**state, "online": online})
         return self.states.get(device_id, {})
+
+    def _offline_in_cloud(self, device_id: str, driver) -> bool:
+        """A cloud read succeeds with cached values even for a device that is gone; Mi Home's flag knows better."""
+        return getattr(driver, "via_cloud", False) and self.cloud_online.get(device_id) is False
+
+    def _apply_cloud_online(self, online: dict[str, bool]) -> None:
+        self.cloud_online.update(online)
+        for device_id, driver in list(self.drivers.items()):
+            if self._offline_in_cloud(device_id, driver) and self.states.get(device_id, {}).get("online"):
+                self.update_state(device_id, {"online": False})
+
+    async def _cloud_online_loop(self) -> None:
+        while True:
+            await asyncio.sleep(CLOUD_ONLINE_INTERVAL)
+            if self.cloud.logged_in:
+                try:
+                    self._apply_cloud_online(await asyncio.to_thread(self.cloud.online_status))
+                except Exception as e:
+                    log.debug("cloud online status unavailable: %s", e)
 
     async def command(self, device_id: str, action: str, value=None) -> dict:
         driver = self.drivers.get(device_id)
@@ -516,6 +540,7 @@ class Hub:
                     cloud_file.save(self.cloud.data)
             room_of, room_order = rooms_from_homes(homes)
             cloud_devices = [d for h in homes for d in h["devices"]]
+            self._apply_cloud_online({str(d["did"]): bool(d.get("isOnline")) for d in cloud_devices})
             self.cloud_gateways = {
                 str(d["did"]): {**d, "room": room_of.get(str(d["did"]), UNASSIGNED)}
                 for d in cloud_devices if d.get("model", "").startswith("lumi.gateway")

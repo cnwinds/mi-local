@@ -196,6 +196,15 @@ class MiCloud:
             raise CloudError(f"HTTP {resp.status_code}")
         return resp.content
 
+    def online_status(self) -> dict[str, bool]:
+        """did -> whether Mi Home sees the device online, for the whole account in one request.
+
+        Property reads keep answering with a device's last values long after it went offline, so this is the
+        only trustworthy online signal for devices reached through the cloud.
+        """
+        result = self.call("/home/device_list", {"getVirtualModel": True, "getHuamiDevices": 1})
+        return {str(d["did"]): bool(d.get("isOnline")) for d in result.get("list") or []}
+
     def fetch_homes(self) -> list[dict]:
         """Every home with its rooms and devices: [{id, name, rooms: [{name, dids}], devices: [...]}]."""
         homes = []

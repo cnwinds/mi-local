@@ -140,3 +140,7 @@ cd frontend && npm install && npm run dev            # 前端开发服务器，�
 docker build --build-arg NPM_REGISTRY=https://registry.npmmirror.com \
              --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple -t mi-local .
 ```
+
+## 许可证
+
+[MIT](LICENSE)。米家登录协议参考了 [Xiaomi-cloud-tokens-extractor](https://github.com/PiotrMachowski/Xiaomi-cloud-tokens-extractor)（MIT），摄像头取流依赖 [go2rtc](https://github.com/AlexxIT/go2rtc)（MIT）。
