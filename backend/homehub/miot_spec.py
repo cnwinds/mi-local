@@ -1,6 +1,7 @@
 """MIoT specs from miot-spec.org, cached on disk and turned into display fields with Chinese labels.
 
-A field: {key "siid.piid", siid, piid, service, name, prop, format, unit, range, values, writable}.
+A field: {key "siid.piid", siid, piid, service, svc, name, prop, format, unit, range, values, writable}.
+`service`/`name` are display labels; `svc`/`prop` are the urn names ("light", "brightness") code can rely on.
 """
 import json
 import logging
@@ -16,6 +17,8 @@ log = logging.getLogger(__name__)
 HOST = "https://miot-spec.org"
 CACHE_DIR = DATA_DIR / "specs"
 INSTANCES_MAX_AGE = 7 * 86400
+# A model missing from an index younger than this has no spec; don't download the index again for it.
+INSTANCES_RETRY = 3600
 SKIP_SERVICES = {"device-information"}
 SKIP_PROPS = {"audio-id"}
 TEMPERATURE_PROPS = {"temperature", "target-temperature"}
@@ -68,20 +71,38 @@ def _get(path: str, **params) -> dict:
     return resp.json()
 
 
-def _urn_for(model: str) -> str | None:
+def _instances(wanted: list[str]) -> dict[str, str]:
+    """model -> spec urn. Refetches the index (several MB) only when it is stale or lacks a wanted model."""
     cache = CACHE_DIR / "_instances.json"
-    urns = None
-    if cache.exists() and time.time() - cache.stat().st_mtime < INSTANCES_MAX_AGE:
+    urns, age = None, float("inf")
+    if cache.exists():
+        age = time.time() - cache.stat().st_mtime
         urns = json.loads(cache.read_text(encoding="utf-8"))
-    if urns is None or model not in urns:
-        latest: dict[str, tuple[str, int]] = {}
-        for i in _get("/miot-spec-v2/instances", status="all")["instances"]:
-            if i["model"] not in latest or i["version"] > latest[i["model"]][1]:
-                latest[i["model"]] = (i["type"], i["version"])
-        urns = {m: t for m, (t, _) in latest.items()}
-        CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        cache.write_text(json.dumps(urns), encoding="utf-8")
-    return urns.get(model)
+    missing = urns is None or any(m not in urns for m in wanted)
+    if age > INSTANCES_MAX_AGE or (missing and age > INSTANCES_RETRY):
+        try:
+            latest: dict[str, tuple[str, int]] = {}
+            for i in _get("/miot-spec-v2/instances", status="all")["instances"]:
+                if i["model"] not in latest or i["version"] > latest[i["model"]][1]:
+                    latest[i["model"]] = (i["type"], i["version"])
+            urns = {m: t for m, (t, _) in latest.items()}
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            cache.write_text(json.dumps(urns), encoding="utf-8")
+        except Exception:
+            if urns is None:
+                raise
+            log.debug("spec index refresh failed, using the cached one", exc_info=True)
+    return urns or {}
+
+
+def _urn_for(model: str) -> str | None:
+    return _instances([model]).get(model)
+
+
+def device_types(models: list[str]) -> dict[str, str]:
+    """Spec device type per model ("light", "air-conditioner", "curtain"…); models without a spec are left out."""
+    urns = _instances(models)
+    return {m: _name(urns[m]) for m in models if m in urns}
 
 
 def _name(urn: str) -> str:
@@ -102,7 +123,7 @@ def parse(spec: dict, zh: dict[str, str]) -> list[dict]:
             vendor = p["type"].split(":")[1] != "miot-spec-v2"
             raw_label = zh.get(pk) or ""
             label = _zh(raw_label, PROP_ZH, _name(p["type"]), None)
-            values = [{"value": v["value"],
+            values = [{"value": v["value"], "name": v["description"],
                        "label": _zh(zh.get(f"{pk}:valuelist:{i:03}"), VALUE_ZH, v["description"], v["description"])}
                       for i, v in enumerate(p.get("value-list", []))]
             if "位图" in raw_label:
@@ -115,7 +136,7 @@ def parse(spec: dict, zh: dict[str, str]) -> list[dict]:
                 unit = "celsius"
             fields.append({
                 "key": f"{s['iid']}.{p['iid']}", "siid": s["iid"], "piid": p["iid"],
-                "service": service, "name": label or p.get("description") or _name(p["type"]),
+                "service": service, "svc": _name(s["type"]), "name": label or p.get("description") or _name(p["type"]),
                 "prop": _name(p["type"]), "format": p["format"],
                 "unit": None if unit in (None, "none") else unit,
                 "range": p.get("value-range"), "values": values, "writable": "write" in p.get("access", []),

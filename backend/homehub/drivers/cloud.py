@@ -6,6 +6,7 @@ import asyncio
 import time
 
 from ..micloud import MiCloud
+from .miot_typed import TypedMapping
 
 # One request at a time: the cloud client shares a requests.Session.
 _cloud_lock = asyncio.Lock()
@@ -201,7 +202,8 @@ def legacy_fields(model: str) -> list[dict]:
 class MiotGenericDriver(CloudDriver):
     """Any device with a MIoT spec: reads every readable property through the cloud.
 
-    State: {"props": {"siid.piid": value}, "power": main switch if the device has one}.
+    State: {"props": {"siid.piid": value}, "power": main switch if the device has one}, plus the typed state
+    (brightness, mode, position…) when the record's kind is one TypedMapping knows.
     """
 
     poll_interval = 60.0
@@ -211,9 +213,14 @@ class MiotGenericDriver(CloudDriver):
     def __init__(self, record: dict, cloud: MiCloud, fields: list[dict]):
         super().__init__(record, cloud)
         self._written: dict[str, tuple] = {}
+        self._props: dict = {}
         self.kind = record.get("kind", "other")
         self.fields = fields + legacy_fields(record.get("model", ""))
         self.by_key = {f["key"]: f for f in self.fields}
+        self.typed = TypedMapping(self.kind, fields)
+        # Lights and the like poll faster so a wall switch shows up on the tile quickly.
+        if self.kind in ("light", "plug", "curtain"):
+            self.poll_interval = 15.0
         main = min((f["siid"] for f in fields), default=None)
         self.power_key = next((f["key"] for f in fields if f["siid"] == main and f["prop"] == "on"), None)
 
@@ -235,12 +242,14 @@ class MiotGenericDriver(CloudDriver):
                 props.update({f"x.{p}": v for p, v in zip(legacy, values) if v not in ("error", None)})
             except Exception:
                 pass
+        self._props = props
         state = {"props": props}
         if self.power_key and self.power_key in props:
             state["power"] = bool(props[self.power_key])
+        state.update(self.typed.state(props))
         return state
 
-    async def set_prop(self, key: str, value) -> None:
+    def _coerce(self, key: str, value):
         field = self.by_key.get(key)
         if not field or not field["writable"]:
             raise ValueError(f"property {key} is not writable")
@@ -255,19 +264,33 @@ class MiotGenericDriver(CloudDriver):
                 value = int(value)
         if field["values"] and value not in [v["value"] for v in field["values"]]:
             raise ValueError(f"invalid value {value!r} for {key}")
+        return field, value
+
+    async def set_props(self, values: dict) -> None:
+        """Write several properties in one cloud call."""
+        writes = [self._coerce(k, v) for k, v in values.items()]
         result = await _call(self.cloud, "/miotspec/prop/set", {"params": [
-            {"did": self.did, "siid": field["siid"], "piid": field["piid"], "value": value}]})
+            {"did": self.did, "siid": f["siid"], "piid": f["piid"], "value": v} for f, v in writes]})
         if any(r.get("code") not in (0, 1) for r in result):
             raise RuntimeError(f"cloud write failed: {[r.get('code') for r in result]}")
-        self._written[key] = (value, time.monotonic())
+        now = time.monotonic()
+        for f, v in writes:
+            self._written[f["key"]] = (v, now)
+            self._props[f["key"]] = v
 
     async def command(self, action: str, value=None) -> None:
         if action == "set_prop":
-            await self.set_prop(value["key"], value["value"])
+            await self.set_props({value["key"]: value["value"]})
+            return
+        if action == "toggle":
+            await self.poll()
+        writes = self.typed.writes(action, value, self._props)
+        if writes:
+            await self.set_props(writes)
             return
         if action in ("turn_on", "turn_off", "toggle") and self.power_key:
-            on = action == "turn_on" if action != "toggle" else not (await self.poll()).get("power")
-            await self.set_prop(self.power_key, on)
+            on = action == "turn_on" if action != "toggle" else not self._props.get(self.power_key)
+            await self.set_props({self.power_key: on})
             return
         raise ValueError(f"unsupported action {action}")
 

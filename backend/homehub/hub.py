@@ -11,7 +11,7 @@ from .cameras import Cameras
 from .catalog import LOCAL_FIELDS, UNASSIGNED, gateway_record, merge, rooms_from_homes
 from .drivers.gateway2 import KIND_BY_MODEL, Gateway2, Gw2DeviceDriver, Gw2DoorbellDriver
 from .drivers.cloud import CLOUD_DRIVERS, MiotGenericDriver
-from .miot_spec import load_fields
+from .miot_spec import device_types, load_fields
 from .drivers.miio_wifi import DRIVERS
 from .micloud import MiCloud
 from .rules import RuleEngine
@@ -225,6 +225,11 @@ class Hub:
             driver = DRIVERS[driver_name](record)
             if driver_name == "miio" and self.cloud.logged_in:
                 self._tasks.append(asyncio.create_task(self._upgrade_to_miot(record)))
+        elif driver_name == "miot_cloud":
+            # No LAN address: nothing to poll until the spec driver takes over through the cloud.
+            if self.cloud.logged_in:
+                self._tasks.append(asyncio.create_task(self._upgrade_to_miot(record)))
+            return
         else:
             return
         self._start_driver(record["id"], driver)
@@ -487,7 +492,14 @@ class Hub:
                 for d in cloud_devices if d.get("model", "").startswith("lumi.gateway")
             }
             gw = self._gw_record() or {}
-            records, summary = merge(cloud_devices, room_of, self.records, gw.get("id", ""), gw.get("lan_key", ""))
+            models = sorted({d.get("model", "") for d in cloud_devices})
+            try:
+                spec_types = await asyncio.to_thread(device_types, models)
+            except Exception as e:
+                log.warning("MIoT spec index unavailable, new devices stay untyped: %s", e)
+                spec_types = {}
+            records, summary = merge(cloud_devices, room_of, self.records, gw.get("id", ""), gw.get("lan_key", ""),
+                                     spec_types)
             if self._apply_records(records):
                 await self._restart_gateway()
             self.broadcast({"type": "gateway"})
@@ -511,7 +523,7 @@ class Hub:
             if record["kind"] == "gateway":
                 gateway_changed |= bool(old) and gateway_ip(old) != gateway_ip(record)
                 continue
-            if old is None or any(old.get(f) != record.get(f) for f in DRIVER_FIELDS):
+            if old is None or any(old.get(f) != record.get(f) for f in (*DRIVER_FIELDS, "kind")):
                 self._detach(rid)
                 self._attach(record)
             else:

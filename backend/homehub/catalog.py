@@ -1,9 +1,21 @@
-"""Map Mi Home cloud devices to local device records and merge them into the existing set."""
+"""Map Mi Home cloud devices to local device records and merge them into the existing set.
+
+Known models get their dedicated drivers. Anything else is typed by its MIoT spec (a light, an AC…) and runs on the
+generic spec driver: over miIO when it has a LAN address, otherwise ("miot_cloud") through the Mi Home cloud.
+"""
+import ipaddress
+
+from .drivers.miot_typed import KIND_BY_TYPE
 
 UNASSIGNED = "未分配"
 LIGHT_DRIVERS = {"yeelink.light.ceiling": "yeelight", "philips.light.downlight": "philips"}
 GW2_KINDS = {"lumi.sensor_switch.v2": "switch", "lumi.plug.v1": "plug", "lumi.curtain.v1": "curtain"}
-SKIP_MODELS = ("camera",)
+# Cameras are picked up by cameras.py and streamed through go2rtc instead. miir.* are virtual infrared remotes:
+# they only take MIoT actions, which the spec driver doesn't send yet.
+SKIP_MODELS = (".camera.", ".cateye.", "miir.")
+# Network gear, not something to switch from a home panel.
+SKIP_SPEC_TYPES = {"router", "gateway"}
+PRIVATE_NETS = tuple(ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"))
 # These refuse LAN control or sit on a subnet the hub cannot reach; they go through the Mi Home cloud.
 CLOUD_KINDS = {"xiaomi.aircondition.ma2": "ac", "lumi.acpartner.v2": "ac", "viomi.bhf_light.v1": "bath_heater",
                "mrbond.airer.m1pro": "airer"}
@@ -12,7 +24,15 @@ SYNCED_FIELDS = ("name", "room", "model", "ip", "token")
 LOCAL_FIELDS = ("hidden", "local_name", "local_room", "name_auto", "ip_override")
 
 
-def convert(dev: dict, gateway_ids: set[str], room: str) -> dict | None:
+def is_lan_ip(ip: str) -> bool:
+    try:
+        return any(ipaddress.ip_address(ip) in net for net in PRIVATE_NETS)
+    except ValueError:
+        return False
+
+
+def convert(dev: dict, gateway_ids: set[str], room: str, spec_type: str | None = None) -> dict | None:
+    """spec_type: the model's MIoT device type ("light"…), None when it has no spec or the index was unreachable."""
     model = dev.get("model", "")
     base = {"id": str(dev["did"]), "name": dev.get("name", model), "room": room, "model": model, "hidden": False}
     # Zigbee devices still on the multimode gateway are mapped to Gateway 2 too: they show
@@ -23,15 +43,24 @@ def convert(dev: dict, gateway_ids: set[str], room: str) -> dict | None:
         return {**base, "id": f"lumi.{sid}", "kind": kind, "driver": "gw2", "sid": sid, "gw_model": kind}
     if model in CLOUD_KINDS:
         return {**base, "kind": CLOUD_KINDS[model], "driver": "cloud"}
+    if model.startswith("lumi.gateway") or any(s in model for s in SKIP_MODELS):
+        return None
     ip, token = dev.get("localip") or "", dev.get("token")
-    if not token or not ip.startswith("192.168.") or any(s in model for s in SKIP_MODELS):
-        return None
-    if model.startswith("lumi.gateway"):
-        return None
-    for prefix, driver in LIGHT_DRIVERS.items():
-        if model.startswith(prefix):
-            return {**base, "kind": "light", "driver": driver, "ip": ip, "token": token}
-    return {**base, "kind": "other", "driver": "miio", "ip": ip, "token": token, "hidden": not dev.get("isOnline")}
+    lan = bool(token) and is_lan_ip(ip)
+    if lan:
+        for prefix, driver in LIGHT_DRIVERS.items():
+            if model.startswith(prefix):
+                return {**base, "kind": "light", "driver": driver, "ip": ip, "token": token}
+    kind = KIND_BY_TYPE.get(spec_type or "", "other")
+    hidden = not dev.get("isOnline")
+    if lan:
+        return {**base, "kind": kind, "driver": "miio", "ip": ip, "token": token, "hidden": hidden}
+    # No LAN address (Bluetooth Mesh, Zigbee on a multimode gateway…): the cloud is the only way in, so only
+    # devices whose spec tells us what they can do are worth importing. Those without a tile start hidden:
+    # kettles and sensors would otherwise crowd the home page.
+    if spec_type and spec_type not in SKIP_SPEC_TYPES:
+        return {**base, "kind": kind, "driver": "miot_cloud", "hidden": hidden or kind == "other"}
+    return None
 
 
 def gateway_record(dev: dict, room: str, lan_key: str, ip: str | None = None) -> dict:
@@ -44,9 +73,10 @@ def gateway_record(dev: dict, room: str, lan_key: str, ip: str | None = None) ->
 
 
 def merge(cloud_devices: list[dict], room_of: dict[str, str], existing: dict[str, dict],
-          gateway_id: str, lan_key: str) -> tuple[list[dict], dict]:
+          gateway_id: str, lan_key: str, spec_types: dict[str, str] | None = None) -> tuple[list[dict], dict]:
     """Return (records, summary). Cloud wins for SYNCED_FIELDS; LOCAL_FIELDS are kept;
-    local devices missing from the cloud are kept unchanged."""
+    local devices missing from the cloud are kept unchanged. spec_types: model -> MIoT device type."""
+    spec_types = spec_types or {}
     gateway_ids = {str(d["did"]) for d in cloud_devices if d.get("model", "").startswith("lumi.gateway")}
     records: dict[str, dict] = {}
     for dev in cloud_devices:
@@ -54,7 +84,7 @@ def merge(cloud_devices: list[dict], room_of: dict[str, str], existing: dict[str
         if str(dev["did"]) == gateway_id:
             record = gateway_record(dev, room, lan_key)
         else:
-            record = convert(dev, gateway_ids, room)
+            record = convert(dev, gateway_ids, room, spec_types.get(dev.get("model", "")))
         if record:
             records[record["id"]] = record
 
