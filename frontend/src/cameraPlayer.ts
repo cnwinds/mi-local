@@ -34,12 +34,22 @@ export class CameraPlayer {
   private retryTimer = 0
   private frameUrl = ''
 
+  private video: HTMLVideoElement
+  private url: string
+  private onState: (state: PlayerState, detail?: { text: string; fatal: boolean }) => void
+  private onFrame: (url: string) => void
+
   constructor(
-    private video: HTMLVideoElement,
-    private url: string,
-    private onState: (state: PlayerState, detail?: { text: string; fatal: boolean }) => void,
-    private onFrame: (url: string) => void,
-  ) {}
+    video: HTMLVideoElement,
+    url: string,
+    onState: (state: PlayerState, detail?: { text: string; fatal: boolean }) => void,
+    onFrame: (url: string) => void,
+  ) {
+    this.video = video
+    this.url = url
+    this.onState = onState
+    this.onFrame = onFrame
+  }
 
   start() {
     this.stopped = false
