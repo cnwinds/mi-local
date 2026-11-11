@@ -122,7 +122,12 @@ def _current(request: Request) -> dict:
 def auth_me(request: Request):
     device = auth.authenticate(request.cookies.get(COOKIE, ""), _client_ip(request.scope))
     if not device:
-        return {"paired": False}
+        return {"paired": False, "claimable": auth.claimable}
+    return {"paired": True, **auth.public(device, device["id"])}
+
+
+def _paired(device: dict, token: str, response: Response) -> dict:
+    response.set_cookie(COOKIE, token, max_age=COOKIE_MAX_AGE, httponly=True, samesite="strict", path="/")
     return {"paired": True, **auth.public(device, device["id"])}
 
 
@@ -134,8 +139,20 @@ def auth_pair(body: PairBody, request: Request, response: Response):
         raise HTTPException(429, "试错次数太多，请 10 分钟后再试")
     except PairError as e:
         raise HTTPException(400, str(e))
-    response.set_cookie(COOKIE, token, max_age=COOKIE_MAX_AGE, httponly=True, samesite="strict", path="/")
-    return {"paired": True, **auth.public(device, device["id"])}
+    return _paired(device, token, response)
+
+
+class ClaimBody(BaseModel):
+    name: str = Field("", max_length=40)
+
+
+@app.post("/api/auth/claim")
+def auth_claim(body: ClaimBody, request: Request, response: Response):
+    try:
+        device, token = auth.claim(body.name, _client_ip(request.scope))
+    except PairError as e:
+        raise HTTPException(400, str(e))
+    return _paired(device, token, response)
 
 
 @app.get("/api/auth/devices")

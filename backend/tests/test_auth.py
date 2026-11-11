@@ -1,7 +1,7 @@
 import pytest
 
 from homehub.auth import (
-    BOOTSTRAP_ATTEMPTS, CODE_TTL, IP_FAILURES, Auth, PairError, TooManyAttempts, required_permission, token_hash,
+    BOOTSTRAP_ATTEMPTS, CLAIM_WINDOW, CODE_TTL, IP_FAILURES, Auth, PairError, TooManyAttempts, required_permission, token_hash,
     write_bootstrap_code,
 )
 from homehub.store import JsonFile
@@ -96,7 +96,26 @@ def test_last_admin_cannot_be_removed_or_demoted(setup):
     assert [d["id"] for d in auth.devices] == [other["id"]]
 
 
+def test_first_browser_claims_admin_once_and_only_early(setup):
+    auth, clock, tmp = setup
+    write_bootstrap_code(tmp / "pairing-code.json", clock())
+    assert auth.claimable
+    device, token = auth.claim("我的电脑", "ip")
+    assert device["role"] == "admin" and auth.authenticate(token) is device
+    assert not (tmp / "pairing-code.json").exists()
+    assert not auth.claimable
+    with pytest.raises(PairError):
+        auth.claim("别人", "ip2")
+
+    late = Auth(auth.file.__class__("auth2.json", {"devices": []}), tmp / "code2.json", clock)
+    clock.t += CLAIM_WINDOW + 1
+    assert not late.claimable
+    with pytest.raises(PairError):
+        late.claim("迟到的", "ip")
+
+
 def test_permissions():
+    assert required_permission("POST", "/api/auth/claim") is None
     assert required_permission("GET", "/") is None
     assert required_permission("GET", "/assets/x.js") is None
     assert required_permission("POST", "/api/auth/pair") is None

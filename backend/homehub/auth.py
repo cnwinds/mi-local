@@ -29,6 +29,9 @@ PERMISSIONS = {
     "panel": {"view", "control"},
 }
 
+# A fresh install can be claimed without a code: the first browser to ask becomes the admin, but only this long
+# after the hub started and only while nothing is paired. Later the one-time code from the log is needed.
+CLAIM_WINDOW = 3600
 CODE_TTL = 300
 CODE_ATTEMPTS = 5
 BOOTSTRAP_TTL = 24 * 3600
@@ -49,7 +52,7 @@ def required_permission(method: str, path: str) -> str | None:
     """What a request needs; None when anyone may make it. Routes not listed here are admin only."""
     if not path.startswith("/api/"):
         return None
-    if path in ("/api/auth/me", "/api/auth/pair", "/api/lockin/ca.crt"):
+    if path in ("/api/auth/me", "/api/auth/pair", "/api/auth/claim", "/api/lockin/ca.crt"):
         return None
     if path.startswith("/api/cameras"):
         return "cameras" if method == "GET" else "admin"
@@ -98,6 +101,7 @@ class Auth:
         # code -> {"role", "expires", "attempts"}
         self.codes: dict[str, dict] = {}
         self.failures: dict[str, list[float]] = {}
+        self.started = clock()
 
     def save(self) -> None:
         self.file.save({"devices": self.devices})
@@ -112,6 +116,18 @@ class Auth:
             return
         code = write_bootstrap_code(self.bootstrap_path, self.clock())
         log.warning("还没有管理员设备。在浏览器里打开 mi-local，用这个一次性配对码配对第一台设备（24 小时内有效）：%s", code)
+
+    @property
+    def claimable(self) -> bool:
+        return not self.devices and self.clock() - self.started < CLAIM_WINDOW
+
+    def claim(self, name: str, ip: str) -> tuple[dict, str]:
+        """First run: the first browser becomes the admin without a code."""
+        if not self.claimable:
+            raise PairError("已经有人认领过了，请用配对码")
+        log.warning("首次使用：%s 已成为管理员", name.strip()[:24] or "未命名设备")
+        self.bootstrap_path.unlink(missing_ok=True)
+        return self._add("admin", name, ip)
 
     def authenticate(self, token: str, ip: str = "") -> dict | None:
         if not token:
@@ -148,6 +164,10 @@ class Auth:
         if not role:
             self._fail(ip, now)
             raise PairError("配对码不对，或者已经过期")
+        return self._add(role, name, ip)
+
+    def _add(self, role: str, name: str, ip: str) -> tuple[dict, str]:
+        now = self.clock()
         token = secrets.token_urlsafe(32)
         device = {
             "id": uuid.uuid4().hex[:8],

@@ -2,12 +2,30 @@
 import { ref } from 'vue'
 import { House, KeyRound } from 'lucide-vue-next'
 import { api } from '../api'
+import { me } from '../store'
 
 // A pairing QR code opens …/#/pair?code=123456
 const code = ref(location.hash.match(/[?&]code=([0-9A-Za-z-]+)/)?.[1] ?? '')
 const name = ref(guessName())
 const busy = ref(false)
 const error = ref('')
+// A fresh install: offer to become the admin straight away, unless the page was opened from a pairing QR code.
+const claiming = ref(!!(me.value && !me.value.paired && me.value.claimable) && !code.value)
+
+async function claim() {
+  if (busy.value) return
+  busy.value = true
+  error.value = ''
+  try {
+    await api.claim(name.value)
+    location.replace(location.pathname)
+  } catch (e) {
+    error.value = (e as Error).message
+    claiming.value = false
+  } finally {
+    busy.value = false
+  }
+}
 
 function guessName() {
   const ua = navigator.userAgent
@@ -36,7 +54,20 @@ async function pair() {
 
 <template>
   <div class="pair">
-    <form class="card panel" @submit.prevent="pair">
+    <form v-if="claiming" class="card panel" @submit.prevent="claim">
+      <div class="logo"><House :size="22" :stroke-width="2.2" /></div>
+      <h1>欢迎使用</h1>
+      <p class="lead">这是第一次打开 mi-local。这台设备会成为管理员，之后再用它给家人的手机和墙上的平板配对。</p>
+      <label class="field">
+        <span>这台设备叫</span>
+        <input v-model="name" maxlength="24" placeholder="比如：书房电脑" />
+      </label>
+      <div v-if="error" class="error">{{ error }}</div>
+      <button class="submit" type="submit" :disabled="busy">{{ busy ? '请稍候…' : '开始使用' }}</button>
+      <button class="link" type="button" @click="claiming = false">我有配对码</button>
+    </form>
+
+    <form v-else class="card panel" @submit.prevent="pair">
       <div class="logo"><House :size="22" :stroke-width="2.2" /></div>
       <h1>配对这台设备</h1>
       <p class="lead">为了安全，只有配对过的设备才能查看和控制家里。每台设备只需配对一次。</p>
@@ -152,6 +183,14 @@ h1 {
 .submit:disabled {
   opacity: 0.45;
   cursor: default;
+}
+.link {
+  align-self: center;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.link:hover {
+  color: var(--accent-text);
 }
 .help {
   display: flex;

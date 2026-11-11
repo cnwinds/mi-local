@@ -282,7 +282,8 @@ export interface AuthDevice {
   current: boolean
 }
 
-export type Me = { paired: false } | ({ paired: true } & AuthDevice)
+/** claimable: a fresh install nobody has claimed yet; this browser can become the admin without a code. */
+export type Me = { paired: false; claimable?: boolean } | ({ paired: true } & AuthDevice)
 
 let unauthorized: (() => void) | null = null
 /** Called when the hub no longer recognizes this browser, e.g. after it was revoked. */
@@ -307,6 +308,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 export const api = {
   me: () => request<Me>('GET', '/auth/me'),
   pair: (code: string, name: string) => request<Me>('POST', '/auth/pair', { code, name }),
+  claim: (name: string) => request<Me>('POST', '/auth/claim', { name }),
   authDevices: () => request<AuthDevice[]>('GET', '/auth/devices'),
   createPairCode: (role: Role) => request<{ code: string; role: Role; expires_in: number }>('POST', '/auth/codes', { role }),
   updateAuthDevice: (id: string, patch: { name?: string; role?: Role }) =>
