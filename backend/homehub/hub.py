@@ -3,6 +3,8 @@ import ipaddress
 import logging
 import os
 import re
+import secrets
+import string
 import time
 import miio
 
@@ -167,6 +169,36 @@ class Hub:
                 "has_key": bool(gw.get("lan_key")), "has_token": bool(gw.get("token")),
             })
         return status
+
+    async def fetch_gateway_key(self, did: str, ip: str | None = None, create: bool = False) -> dict:
+        """Read the gateway's LAN key over miIO with its token (newer Mi Home apps no longer show it) and use it.
+
+        A gateway without a key gets a fresh random one only when create is set: rewriting a key that is already
+        there would cut off anything else that uses it. The key stays in the hub; callers see has_key only.
+        """
+        current = self._gw_record()
+        dev = self.cloud_gateways.get(did) or (current if current and current["id"] == did else None)
+        if not dev:
+            raise ValueError("找不到这个网关，请先同步一次米家")
+        token, address = dev.get("token"), ip or dev.get("localip") or dev.get("ip")
+        if not token or not address:
+            raise ValueError("米家没有提供这个网关的通信 token 或 IP，请先同步一次米家")
+        device = miio.Device(address, token, timeout=5)
+        try:
+            reply = await asyncio.to_thread(device.send, "get_lumi_dpf_aes_key")
+        except Exception as e:
+            raise RuntimeError(f"连不上网关（{address}），请检查 IP：{e}") from None
+        key = reply[0] if isinstance(reply, list) and reply else ""
+        if not re.fullmatch(r"[0-9A-Za-z]{16}", str(key)):
+            if not create:
+                return {**self.gateway_status(), "gateway_has_key": False}
+            key = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(16))
+            await asyncio.to_thread(device.send, "set_lumi_dpf_aes_key", [key])
+            await asyncio.sleep(2)
+            if await asyncio.to_thread(device.send, "get_lumi_dpf_aes_key") != [key]:
+                raise RuntimeError("密钥写入后读回不一致，请再试一次")
+            log.info("gateway %s: wrote a new LAN key", did)
+        return {**await self.configure_gateway(did, ip, key), "gateway_has_key": True}
 
     async def configure_gateway(self, did: str, ip: str | None = None, lan_key: str | None = None) -> dict:
         """Pick which gateway the hub talks to, and its IP / LAN key. Empty lan_key keeps the saved one."""

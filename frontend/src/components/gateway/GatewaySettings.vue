@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { showFailToast, showSuccessToast } from 'vant'
-import { ChevronDown, ChevronUp, CircleAlert, KeyRound, Router } from 'lucide-vue-next'
+import { showConfirmDialog, showFailToast, showSuccessToast } from 'vant'
+import { ChevronDown, ChevronUp, CircleAlert, KeyRound, Router, Wand2 } from 'lucide-vue-next'
 import { api, type GatewayCandidate } from '../../api'
 import { cloud, gateway } from '../../store'
 
@@ -43,6 +43,31 @@ watch(selected, (id) => {
   if (gateway.value?.configured && gateway.value.id === id) ip.value = gateway.value.ip ?? ''
   else ip.value = options.value.find((c) => c.id === id)?.ip ?? ''
 })
+
+// Newer Mi Home apps hide the key; the hub reads it from the gateway with the token the cloud sync provides.
+const fetching = ref(false)
+async function fetchKey() {
+  if (!choice.value) return
+  fetching.value = true
+  try {
+    const target = { id: selected.value, ip: ip.value.trim() }
+    let status = await api.gatewayKey(target)
+    if (!status.gateway_has_key) {
+      await showConfirmDialog({
+        title: '网关还没有局域网密钥',
+        message: '要生成一个新密钥写入网关吗？写入后网关会开启局域网协议，mi-local 就能控制窗帘、插座和门铃。',
+      })
+      status = await api.gatewayKey({ ...target, create: true })
+    }
+    gateway.value = status
+    showSuccessToast('已从网关取得密钥')
+    emit('close')
+  } catch (e) {
+    if (e instanceof Error) showFailToast(e.message)
+  } finally {
+    fetching.value = false
+  }
+}
 
 async function save() {
   if (!choice.value) return
@@ -97,14 +122,17 @@ async function save() {
             <template #left-icon><KeyRound :size="18" color="var(--text-3)" /></template>
           </van-field>
           <div v-if="keyRequired" class="hint warn">没有密钥时只能看状态和收开关事件，控制窗帘、插座和门铃都需要它。</div>
+          <van-button class="fetch" block round :loading="fetching" @click="fetchKey">
+            <span class="fetch-text"><Wand2 :size="16" />自动从网关获取密钥（推荐）</span>
+          </van-button>
           <button class="help-toggle" @click="showHelp = !showHelp">
-            怎么获取局域网密钥 <component :is="showHelp ? ChevronUp : ChevronDown" :size="14" />
+            这是怎么做到的 <component :is="showHelp ? ChevronUp : ChevronDown" :size="14" />
           </button>
           <ol v-if="showHelp" class="help">
-            <li>在米家 App 里打开这个网关，点右上角「⋯」，进入「关于」。</li>
-            <li>连续快速点击页面下方的版本号区域，直到出现开发者选项。</li>
-            <li>进入「局域网通信协议」，打开开关。</li>
-            <li>下方显示的 16 位「密码」就是局域网密钥，填到这里。</li>
+            <li>同步米家时，mi-local 拿到了网关的通信 token，用它在局域网里直接向网关读取密钥，填到这里。</li>
+            <li>网关还没有密钥时，会先问你，确认后生成一个 16 位密钥写入网关，同时开启局域网协议。</li>
+            <li>已经有密钥的网关不会被改写，正在用这个密钥的其他系统不受影响。</li>
+            <li>也可以手动填写。旧版米家 App 在网关「关于」页连续点击版本号，可以在开发者选项的「局域网通信协议」里看到；新版 App 已经去掉了这个入口。</li>
           </ol>
         </div>
       </template>
@@ -215,6 +243,14 @@ async function save() {
 }
 .hint.warn {
   color: var(--warm-strong);
+}
+.fetch {
+  margin-top: 10px;
+}
+.fetch-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .help-toggle {
   display: flex;

@@ -520,6 +520,23 @@ async def configure_gateway(config: GatewayConfig):
         raise HTTPException(400, str(e))
 
 
+class GatewayKeyRequest(BaseModel):
+    id: str
+    ip: str | None = None
+    create: bool = False
+
+
+@app.post("/api/gateway/key")
+async def gateway_key(req: GatewayKeyRequest):
+    """Read the LAN key from the gateway itself (create=True writes one if it has none). Answers has_key only."""
+    try:
+        return await hub.fetch_gateway_key(req.id, req.ip or None, req.create)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except RuntimeError as e:
+        raise HTTPException(502, str(e))
+
+
 class PairingRequest(BaseModel):
     seconds: int = Field(120, ge=10, le=300)
 

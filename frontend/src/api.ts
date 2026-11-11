@@ -341,6 +341,9 @@ export const api = {
   configureGateway: (config: { id: string; ip?: string; lan_key?: string }) =>
     request<GatewayStatus>('PUT', '/gateway', config),
   gatewayChildren: () => request<GatewayChild[]>('GET', '/gateway/children'),
+  /** Read the LAN key from the gateway itself; create writes a fresh one if it has none. The key is never returned. */
+  gatewayKey: (body: { id: string; ip?: string; create?: boolean }) =>
+    request<GatewayStatus & { gateway_has_key: boolean }>('POST', '/gateway/key', body),
   panels: () => request<Record<string, PanelItem[]>>('GET', '/panels'),
   setPanel: (room: string, layout: PanelItem[]) =>
     request<PanelItem[]>('PUT', `/panels/${encodeURIComponent(room)}`, layout),
