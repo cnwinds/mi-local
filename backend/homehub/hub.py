@@ -262,6 +262,9 @@ class Hub:
             driver = DRIVERS[driver_name](record)
             if driver_name == "miio":
                 self._tasks.append(asyncio.create_task(self._upgrade_to_miot(record)))
+        elif driver_name == "demo":
+            from .demo import DemoDriver
+            driver = DemoDriver(record)
         elif driver_name == "miot_cloud":
             # No LAN address: nothing to poll until the spec driver takes over through the cloud.
             if self.cloud.logged_in:

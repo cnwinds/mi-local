@@ -1,6 +1,7 @@
 import asyncio
 import io
 import logging
+import os
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -17,6 +18,7 @@ from starlette.requests import cookie_parser
 
 from .auth import COOKIE, COOKIE_MAX_AGE, PERMISSIONS, Auth, PairError, TooManyAttempts, required_permission
 from .cameras import go2rtc_accounts, go2rtc_login, relay, stream_name
+from .demo import seed as seed_demo
 from .hub import Hub
 from .lockin_capture import ca_pem
 from .micloud import CloudError
@@ -24,6 +26,8 @@ from .ranges import byte_range
 from .store import DATA_DIR, floorplan_file, panels_file, scenes_file
 
 log = logging.getLogger(__name__)
+if os.environ.get("HUB_DEMO"):
+    seed_demo()
 hub = Hub()
 auth = Auth()
 STATIC_DIR = Path(__file__).resolve().parents[2] / "frontend" / "dist"
