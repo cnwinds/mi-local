@@ -11,6 +11,8 @@ import { can, rooms } from '../store'
 
 const cameras = ref<Camera[]>([])
 const loaded = ref(false)
+/** False while go2rtc is missing or not logged in (admins only can tell): the players would just show errors. */
+const serviceReady = ref(true)
 const states = ref<Record<string, PlayerState>>({})
 const showHidden = ref(false)
 const rechecking = ref<string | null>(null)
@@ -159,12 +161,13 @@ onBeforeUnmount(() => {
 <template>
   <div ref="root" class="cameras" :class="{ wall }">
     <PageHeader v-if="!wall" title="监控" :subtitle="subtitle">
-      <button v-if="visible.length" class="round-button" title="全屏监控墙" @click="enterWall">
+      <button v-if="visible.length && serviceReady" class="round-button" title="全屏监控墙" @click="enterWall">
         <Maximize :size="19" />
       </button>
     </PageHeader>
 
-    <CameraLogin v-if="can('admin') && !wall" @done="reload" />
+    <CameraLogin v-if="can('admin') && !wall" :cameras="visible.map((c) => c.name)" @done="reload"
+      @ready="(r) => (serviceReady = r)" />
 
     <div v-if="loaded && !cameras.length" class="empty">
       <Cctv :size="34" :stroke-width="1.6" />
@@ -172,7 +175,7 @@ onBeforeUnmount(() => {
       <small>同步米家后，摄像头会自动出现在这里</small>
     </div>
 
-    <div class="grid" :style="wall ? wallGrid : undefined">
+    <div v-if="serviceReady" class="grid" :style="wall ? wallGrid : undefined">
       <button v-for="c in visible" :key="c.id" class="tile" @click="open(c)">
         <CameraFeed :camera-id="c.id" quality="sd" @state="(s, e) => onState(c.id, s, e)" />
         <div class="label">

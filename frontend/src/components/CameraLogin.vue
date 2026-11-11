@@ -6,7 +6,8 @@ import { api } from '../api'
 
 // The camera service (go2rtc) keeps its own Xiaomi login. This walks the admin through it from here,
 // instead of an SSH tunnel to go2rtc's own page.
-const emit = defineEmits<{ done: [] }>()
+const props = defineProps<{ cameras: string[] }>()
+const emit = defineEmits<{ done: []; ready: [ready: boolean] }>()
 
 const status = ref<{ running: boolean; logged_in: boolean; other_account: boolean } | null>(null)
 const step = ref<'account' | 'captcha' | 'verify'>('account')
@@ -20,6 +21,8 @@ const error = ref('')
 
 async function load() {
   status.value = await api.go2rtc().catch(() => null)
+  // Until go2rtc runs and is logged in, the players would only spin on errors.
+  emit('ready', !status.value || status.value.logged_in)
 }
 onMounted(load)
 
@@ -71,6 +74,9 @@ async function submit() {
           <template v-else>监控服务需要用小米账号登录一次才能取到画面，请用和米家同步相同的账号。</template>
         </div>
       </div>
+    </div>
+    <div v-if="props.cameras.length" class="found">
+      已发现 {{ props.cameras.length }} 个摄像头：{{ props.cameras.join('、') }}
     </div>
 
     <form v-if="status.running" class="form" @submit.prevent="submit">
@@ -129,6 +135,14 @@ async function submit() {
   font-size: 12px;
   line-height: 1.6;
   color: var(--text-3);
+}
+.found {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-2);
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
 }
 .form {
   display: flex;
