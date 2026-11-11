@@ -89,6 +89,13 @@ function undo() {
 const selected = ref<number | null>(null)
 const selVertex = ref<number | null>(null)
 const sel = computed(() => (selected.value === null ? null : rooms.value[selected.value]))
+/** Middle of each edge of the selected room, where a new vertex can be pulled out. */
+const midpoints = computed<PlanPoint[]>(() =>
+  (sel.value?.points ?? []).map((p, j, pts) => {
+    const q = pts[(j + 1) % pts.length]
+    return [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2]
+  }),
+)
 const tool = ref<'select' | 'rect' | 'bg'>('select')
 const markers = computed(() => [...Object.values(devicePos.value), ...Object.values(cameraPos.value)])
 const pendingName = ref('')
@@ -416,9 +423,12 @@ async function cancel() {
           <text v-for="(r, i) in rooms" :key="`l${i}`" :x="labelAt(r)[0]" :y="labelAt(r)[1]" :font-size="13 * upp"
             :data-label="i" class="label" dominant-baseline="hanging">{{ r.name }}</text>
           <template v-if="sel">
-            <circle v-for="(p, j) in sel.points" :key="`m${j}`" :data-mid="j" class="mid" :r="HANDLE_PX * 0.6 * upp"
-              :cx="(p[0] + sel.points[(j + 1) % sel.points.length][0]) / 2"
-              :cy="(p[1] + sel.points[(j + 1) % sel.points.length][1]) / 2" />
+            <g v-for="(m, j) in midpoints" :key="`m${j}`" class="mid">
+              <circle :data-mid="j" :r="HANDLE_PX * 0.85 * upp" :cx="m[0]" :cy="m[1]">
+                <title>拖动可以在这里加一个顶点</title>
+              </circle>
+              <path :d="`M${m[0] - 3 * upp} ${m[1]}h${6 * upp}M${m[0]} ${m[1] - 3 * upp}v${6 * upp}`" />
+            </g>
             <circle v-for="(p, j) in sel.points" :key="`v${j}`" :data-vertex="j" class="vertex" :class="{ on: selVertex === j }"
               :r="HANDLE_PX * upp" :cx="p[0]" :cy="p[1]" @dblclick.stop="deleteVertex(j)" />
           </template>
@@ -442,6 +452,7 @@ async function cancel() {
         </div>
         <div v-if="tool === 'rect'" class="banner">拖出一个矩形：{{ nextName() }}　·　Esc 取消</div>
         <div v-else-if="tool === 'bg'" class="banner">拖动底图移动，拖右下角的方块缩放　·　Esc 完成</div>
+        <div v-else-if="sel" class="banner">拖动角上的圆点改形状　·　拖动边上的「+」加顶点　·　双击顶点删除</div>
         <div v-else-if="!rooms.length" class="banner">
           {{ background ? '点右侧「画房间」，沿着墙内侧描出每个房间' : '上传户型图描出房间，或者先点「自动布局」' }}
         </div>
@@ -583,13 +594,24 @@ async function cancel() {
 .vertex.on {
   fill: var(--accent);
 }
-.mid {
-  fill: var(--accent);
-  opacity: 0.45;
+.mid circle {
+  fill: var(--surface);
+  stroke: var(--accent);
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
   cursor: copy;
 }
-.mid:hover {
-  opacity: 1;
+.mid path {
+  stroke: var(--accent);
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.mid:hover circle {
+  fill: var(--accent);
+}
+.mid:hover path {
+  stroke: #fff;
 }
 .draft {
   fill: color-mix(in srgb, var(--accent) 18%, transparent);
