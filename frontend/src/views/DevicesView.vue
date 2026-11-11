@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import type { Device } from '../api'
+import type { Device, GatewayCandidate } from '../api'
 import { EVENT_NAMES, can, deviceList, devices, events, eventsTotal, gateway, loadEvents, loadOlderEvents } from '../store'
 import { deviceStatus } from '../rooms'
 import AccessCard from '../components/AccessCard.vue'
@@ -39,6 +39,17 @@ const grouped = computed(() =>
 
 const edit = (d: Device) => (detailId.value = d.id)
 
+// Every gateway in the Mi Home account; the active one stays listed even before the first sync after a restart.
+const gateways = computed<GatewayCandidate[]>(() => {
+  const g = gateway.value
+  const list = [...(g?.candidates ?? [])]
+  if (g?.configured && g.id && !list.some((c) => c.id === g.id)) {
+    list.push({ id: g.id, name: g.name ?? '网关', model: g.model ?? '', ip: g.cloud_ip ?? g.ip ?? null, room: g.room ?? '', online: true, supported: true })
+  }
+  const rank = (c: GatewayCandidate) => (g?.configured && c.id === g.id ? 0 : c.supported ? 1 : 2)
+  return list.sort((a, b) => rank(a) - rank(b))
+})
+
 function statusText(d: Device) {
   const text = deviceStatus(d)
   return d.hidden && d.state.online ? `${text} · 首页已隐藏` : text
@@ -68,9 +79,9 @@ function eventTime(ts: number) {
     <van-tabs v-model:active="tab" class="tabs">
       <van-tab v-if="admin" title="设备管理" name="devices">
         <div class="groups">
-          <section v-if="gateway" class="group">
-            <div class="section-label">网关</div>
-            <div class="group-list card"><GatewayRow @edit="edit" /></div>
+          <section v-if="gateways.length" class="group">
+            <div class="section-label">网关 · {{ gateways.length }}</div>
+            <div class="group-list card"><GatewayRow v-for="gw in gateways" :key="gw.id" :gw="gw" @edit="edit" /></div>
           </section>
           <section v-for="g in grouped" :key="g.kind" class="group">
             <div class="section-label">{{ g.label }} · {{ g.items.length }}</div>

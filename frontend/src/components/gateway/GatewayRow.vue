@@ -1,37 +1,55 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { showDialog } from 'vant'
 import { ChevronRight, Router } from 'lucide-vue-next'
-import type { Device } from '../../api'
+import type { Device, GatewayCandidate } from '../../api'
 import { gateway, pairing } from '../../store'
 import GatewayDetail from './GatewayDetail.vue'
 import GatewaySettings from './GatewaySettings.vue'
 import PairingSheet from './PairingSheet.vue'
 
-// The gateway as one row of the device list; its detail sheet holds children, pairing and settings.
+// One gateway of the Mi Home account as a row of the device list. The one the hub talks to opens its detail
+// sheet (children, pairing, settings); other Gateway 2s open their own settings; the rest only explain.
+const props = defineProps<{ gw: GatewayCandidate }>()
 const emit = defineEmits<{ edit: [device: Device] }>()
 
 const g = computed(() => gateway.value)
+const active = computed(() => !!g.value?.configured && g.value.id === props.gw.id)
 const showDetail = ref(false)
 const showSettings = ref(false)
 const showPairing = ref(false)
 
 const state = computed(() => {
-  if (!g.value?.configured) return 'none'
+  if (!active.value) return 'none'
   if (pairing.value?.active) return 'pairing'
-  return g.value.connected ? 'online' : 'offline'
+  return g.value!.connected ? 'online' : 'offline'
 })
+const name = computed(() => (active.value ? g.value!.name : props.gw.name) || '网关')
 const status = computed(() => {
   const v = g.value
-  if (!v?.configured) return { text: '还没有配置，无线开关、窗帘、插座都要通过网关连接', warn: true }
-  if (state.value === 'offline') return { text: `连不上 · ${v.ip}`, warn: true }
-  if (!v.has_key) return { text: '还没设置局域网密钥，暂时不能控制窗帘、插座和门铃', warn: true }
-  const children = `${v.children_online}/${v.children} 子设备在线`
-  return { text: state.value === 'pairing' ? `配对中 · ${children}` : `${v.room} · ${children}`, warn: false }
+  if (!props.gw.supported) return { text: `${props.gw.model} · 不支持局域网协议，子设备通过云端控制`, warn: false }
+  if (!active.value) {
+    return v?.configured
+      ? { text: '同时只能启用一台网关 2，点击可以改用这台', warn: false }
+      : { text: '还没启用局域网控制，无线开关、窗帘、插座都要通过它连接', warn: true }
+  }
+  if (state.value === 'offline') return { text: `连不上 · ${v!.ip}`, warn: true }
+  if (!v!.has_key) return { text: '还没设置局域网密钥，暂时不能控制窗帘、插座和门铃', warn: true }
+  const children = `${v!.children_online}/${v!.children} 子设备在线`
+  return { text: state.value === 'pairing' ? `配对中 · ${children}` : `${v!.room} · ${children}`, warn: false }
 })
 
 function open() {
-  if (!g.value?.configured || !g.value.has_key) showSettings.value = true
-  else showDetail.value = true
+  if (!props.gw.supported) {
+    showDialog({
+      title: name.value,
+      message: `${props.gw.model} 不提供局域网协议，mi-local 不能直接和它通信。挂在它下面的子设备会通过米家云端控制，断网时不可用。`,
+    })
+  } else if (active.value && g.value!.has_key) {
+    showDetail.value = true
+  } else {
+    showSettings.value = true
+  }
 }
 const openSettings = () => {
   showDetail.value = false
@@ -44,18 +62,20 @@ const openPairing = () => {
 </script>
 
 <template>
-  <div v-if="g" class="item" :class="state" @click="open">
-    <div class="icon"><Router :size="19" /><span class="dot" /></div>
+  <div class="item" :class="[state, { unsupported: !gw.supported }]" @click="open">
+    <div class="icon"><Router :size="19" /><span v-if="active" class="dot" /></div>
     <div class="item-text">
-      <div class="item-name">{{ g.configured ? g.name : '网关' }}</div>
+      <div class="item-name">{{ name }}</div>
       <div class="item-meta" :class="{ warn: status.warn }">{{ status.text }}</div>
     </div>
     <ChevronRight :size="18" class="arrow" />
   </div>
-  <GatewayDetail :show="showDetail" @close="showDetail = false" @settings="openSettings" @pair="openPairing"
-    @edit="(d) => { showDetail = false; emit('edit', d) }" />
-  <GatewaySettings :show="showSettings" @close="showSettings = false" />
-  <PairingSheet :show="showPairing" @close="showPairing = false" />
+  <template v-if="gw.supported">
+    <GatewayDetail v-if="active" :show="showDetail" @close="showDetail = false" @settings="openSettings" @pair="openPairing"
+      @edit="(d) => { showDetail = false; emit('edit', d) }" />
+    <GatewaySettings :show="showSettings" :gw="gw" @close="showSettings = false" />
+    <PairingSheet v-if="active" :show="showPairing" @close="showPairing = false" />
+  </template>
 </template>
 
 <style scoped>
@@ -66,6 +86,9 @@ const openPairing = () => {
   padding: 12px 16px;
   cursor: pointer;
   transition: background 0.15s;
+}
+.item ~ .item {
+  border-top: 1px solid var(--line);
 }
 .item:active {
   background: var(--surface-2);
@@ -91,6 +114,9 @@ const openPairing = () => {
 .pairing .icon {
   background: var(--accent-soft);
   color: var(--accent);
+}
+.unsupported .icon {
+  opacity: 0.5;
 }
 .dot {
   position: absolute;
